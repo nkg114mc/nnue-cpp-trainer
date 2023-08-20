@@ -2,6 +2,7 @@
 #include <iostream>
 
 void test_read_batch_stream();
+void train_nnue_model();
 
 
 int main()
@@ -10,5 +11,6 @@ int main()
     std::cout << tensor << std::endl;
 
     // test_construct_feature_transformer();
-    test_read_batch_stream();
+    //test_read_batch_stream();
+    train_nnue_model();
 }

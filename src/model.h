@@ -7,7 +7,7 @@
 
 #include "feature_set.h"
 #include "feature_transformer.h"
-
+#include "sparse_batch.h"
 
 extern const int L1;
 extern const int L2;
@@ -16,7 +16,6 @@ extern const int L3;
 struct NNUEModelImpl : torch::nn::Module
 {
 public:
-
     FeatureSetPy *feature_set;
 
     // DoubleFeatureTransformerSlice *input;
@@ -27,7 +26,6 @@ public:
 
     std::string description;
 
-
     NNUEModelImpl(FeatureSetPy *feature_set_ptr);
     ~NNUEModelImpl();
     torch::Tensor forward(torch::Tensor us,
@@ -37,15 +35,15 @@ public:
                           torch::Tensor black_indices,
                           torch::Tensor black_values);
 
-    torch::Tensor compute_loss();  // compute loss
-    void get_optimizer(); // return optimizer pointer; create if not exist
-    //void parameters();
+    torch::Tensor compute_loss(SparseBatchTensors batch_tensors,
+                               int batch_idx,
+                               std::string loss_type); // compute loss
+    void get_optimizer();                              // return optimizer pointer; create if not exist
 
 private:
     void zero_virtual_feature_weights();
 };
 TORCH_MODULE(NNUEModel);
-
 
 // main function to run training
 void train_nnue_model();

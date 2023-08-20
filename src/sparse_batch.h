@@ -5,7 +5,7 @@
 
 #include <torch/torch.h>
 
-#include "training_data_loader.h"
+struct SparseBatch;
 
 struct SparseBatchTensors {
 public:

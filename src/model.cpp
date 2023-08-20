@@ -32,11 +32,11 @@ NNUEModelImpl::~NNUEModelImpl()
 }
 
 torch::Tensor NNUEModelImpl::forward(torch::Tensor us,
-                                 torch::Tensor them,
-                                 torch::Tensor white_indices,
-                                 torch::Tensor white_values,
-                                 torch::Tensor black_indices,
-                                 torch::Tensor black_values)
+                                     torch::Tensor them,
+                                     torch::Tensor white_indices,
+                                     torch::Tensor white_values,
+                                     torch::Tensor black_indices,
+                                     torch::Tensor black_values)
 {
     auto wb_pair = input->forward_separate(white_indices, white_values, black_indices, black_values);
     auto w = wb_pair.first;
@@ -74,14 +74,60 @@ void NNUEModelImpl::zero_virtual_feature_weights()
 */
 
 // compute loss
-torch::Tensor NNUEModelImpl::compute_loss() {
+torch::Tensor NNUEModelImpl::compute_loss(SparseBatchTensors batch_tensors,
+                                          int batch_idx,
+                                          std::string loss_type)
+{
+    /*
+        def step_(self, batch, batch_idx, loss_type):
+            us, them, white_indices, white_values, black_indices, black_values, outcome, score = batch
+
+            # 600 is the kPonanzaConstant scaling factor needed to convert the training net output to a score.
+            # This needs to match the value used in the serializer
+            nnue2score = 600
+            scaling = 361
+
+            q = self(us, them, white_indices, white_values, black_indices, black_values) * nnue2score / scaling
+            p = (score / scaling).sigmoid()
+
+            epsilon = 1e-12
+            teacher_entropy = -(p * (p + epsilon).log() + (1.0 - p) * (1.0 - p + epsilon).log())  # result
+            teacher_loss = -(p * F.logsigmoid(q) + (1.0 - p) * F.logsigmoid(-q))  # entropy
+            loss = teacher_loss.mean() - teacher_entropy.mean()
+            self.log(loss_type, loss)
+            return loss
+    */
+
+    // us, them, white_indices, white_values, black_indices, black_values, outcome, score = batch
+
+    // 600 is the kPonanzaConstant scaling factor needed to convert the training net output to a score.
+    // This needs to match the value used in the serializer
+    double nnue2score = 600;
+    double scaling = 361;
+
+    auto y = this->forward(batch_tensors.us,
+                           batch_tensors.them,
+                           batch_tensors.white_indices,
+                           batch_tensors.white_values,
+                           batch_tensors.black_indices,
+                           batch_tensors.black_values);
+    auto q = y * nnue2score / scaling;
+    auto p = (batch_tensors.score / scaling).sigmoid();
+
+    double epsilon = 1e-12;
+    //std::cout << epsilon * 1000000 << std::endl;
+    auto teacher_entropy = -(p * (p + epsilon).log() + (1.0 - p) * (1.0 - p + epsilon).log()); // result
+    auto teacher_loss = -(p * torch::nn::functional::logsigmoid(q) + (1.0 - p) * torch::nn::functional::logsigmoid(-q)); // entropy
+    auto loss = teacher_loss.mean() - teacher_entropy.mean();
+    // self.log(loss_type, loss)
+
+    std::cout << "Loss: "
+              << "batch=" << batch_idx << " "
+              << "loss=" << loss << std::endl;
+    return loss;
 }
 
 // return optimizer pointer; create if not exist
-void NNUEModelImpl::get_optimizer() {
-
+void NNUEModelImpl::get_optimizer()
+{
 }
-
-//void NNUEModelImpl::parameters() {
-//
-//}

@@ -28,6 +28,7 @@ class SparseBatch(ctypes.Structure):
 */
 #include <chrono>
 
+#include "training_data_loader.h"
 #include "sparse_batch.h"
 #include "model.h"
 #include "serialize.h"
@@ -59,23 +60,25 @@ void test_read_batch_stream()
     auto nnue_model = NNUEModel(fs_ptr);
     auto feature_trans = FeatureTransformerSliceEmulate(41024, 256);
 
-    for (const auto& p : nnue_model->parameters()) {
+    for (const auto &p : nnue_model->parameters())
+    {
         std::cout << p.sizes() << std::endl;
     }
 
     FeatureSetPy fs;
-    //load_model_from_nnuebin("./nn-myoutput.nnue", &fs);
-    //load_model_from_nnuebin("./nn-62ef826d1a6d.nnue", &fs);
+    // load_model_from_nnuebin("./nn-myoutput.nnue", &fs);
+    // load_model_from_nnuebin("./nn-62ef826d1a6d.nnue", &fs);
     load_model_from_nnuebin("./output-0.nnue", &fs);
 
-    int batch_size = 10;
-    auto stream = create_sparse_batch_stream("HalfKP", 4, "/media/mc/Fastdata/Stockfish-NNUE/validate1m/val_1m_d14.bin", batch_size, true, false, 0, false);
+    int batch_size = 10000;
+    auto stream = create_sparse_batch_stream("HalfKP", 4, "/media/mc/Fastdata/Stockfish-NNUE/validate1m/val_1m_d14.bin", batch_size, false, false, 0, false);
     auto t0 = std::chrono::high_resolution_clock::now();
 
     std::cout << "batch_size = " << batch_size << '\n';
-    for (int i = 0; i < 1000; ++i)
+    for (int i = 0; i < 101; ++i)
     {
         SparseBatch *batch;
+        std::cout << "start batch " << i << '\n';
         batch = stream->next();
         std::cout << "batch " << i << '\n';
         std::cout << batch->num_inputs << " " << batch->size << " " << batch->max_active_features << std::endl;
@@ -87,39 +90,72 @@ void test_read_batch_stream()
         */
         SparseBatchTensors batch_tensors(batch);
         std::cout << "before forward" << std::endl;
-
-        auto output = nnue_model->forward(batch_tensors.us,
-                                          batch_tensors.them,
-                                          batch_tensors.white_indices,
-                                          batch_tensors.white_values,
-                                          batch_tensors.black_indices,
-                                          batch_tensors.black_values);
         /*
-                std::cout << batch_tensors.white_indices.type() << " ";
-                std::cout << batch_tensors.white_values.type() << " ";
-                std::cout << batch_tensors.black_indices.type() << " ";
-                std::cout << batch_tensors.black_values.type() << std::endl;
+                auto output = nnue_model->forward(batch_tensors.us,
+                                                  batch_tensors.them,
+                                                  batch_tensors.white_indices,
+                                                  batch_tensors.white_values,
+                                                  batch_tensors.black_indices,
+                                                  batch_tensors.black_values);
 
-                std::cout << batch_tensors.white_indices.sizes() << " ";
-                std::cout << batch_tensors.white_values.sizes() << " ";
-                std::cout << batch_tensors.black_indices.sizes() << " ";
-                std::cout << batch_tensors.black_values.sizes() << std::endl;
-
-                auto output = feature_trans->forward(batch_tensors.white_indices,
-                                                     batch_tensors.white_values,
-                                                     batch_tensors.black_indices,
-                                                     batch_tensors.black_values);*/
-        std::cout << output.sizes() << std::endl;
-        // if (i % 100 == 0) std::cout << i << '\n';
-
+                std::cout << output.sizes() << std::endl;
+                // if (i % 100 == 0) std::cout << i << '\n';
+        */
         destroy_sparse_batch(batch);
     }
     auto t1 = std::chrono::high_resolution_clock::now();
     std::cout << (t1 - t0).count() / 1e9 << "s\n";
 }
 
-void train_nnue_model() {
+void train_nnue_model()
+{
+    const double learning_rate = 0.0001;
+    const double weight_decay = 0.00001;
 
+    FeatureSetPy feat_set;
+    auto nnue_model = NNUEModel(&feat_set);
+    //torch::optim::SGD optimizer(nnue_model->parameters(), torch::optim::SGDOptions(learning_rate));
 
-    
+    auto optim_option = torch::optim::AdamOptions(learning_rate);
+    optim_option.weight_decay(weight_decay);
+    torch::optim::Adam optimizer(nnue_model->parameters(), optim_option);
+
+    int batch_size = 10000;
+    auto stream = create_sparse_batch_stream("HalfKP", 4, "/media/mc/Fastdata/Stockfish-NNUE/validate1m/val_1m_d14.bin", batch_size, false, false, 0, false);
+    auto t0 = std::chrono::high_resolution_clock::now();
+
+    std::cout << "batch_size = " << batch_size << '\n';
+    int iter_id = -1;
+    for (int epoch = 0; epoch <= 10; epoch++)
+    {
+        for (int batch_id = 0; batch_id < 100; batch_id++)
+        {
+            iter_id++;
+
+            SparseBatch *batch;
+            std::cout << "start " << "Epoch " << epoch << " batch " << batch_id << '\n';
+            batch = stream->next();
+
+            SparseBatchTensors batch_tensors(batch);
+            // std::cout << "before forward" << std::endl;
+
+            auto output = nnue_model->forward(batch_tensors.us,
+                                              batch_tensors.them,
+                                              batch_tensors.white_indices,
+                                              batch_tensors.white_values,
+                                              batch_tensors.black_indices,
+                                              batch_tensors.black_values);
+            // std::cout << output.sizes() << std::endl;
+            auto loss = nnue_model->compute_loss(batch_tensors, iter_id, "some_loss");
+
+            optimizer.zero_grad();
+            loss.backward();
+            optimizer.step();
+
+            destroy_sparse_batch(batch);
+        }
+    }
+
+    auto t1 = std::chrono::high_resolution_clock::now();
+    std::cout << (t1 - t0).count() / 1e9 << "s\n";
 }
