@@ -19,7 +19,8 @@ public:
     FeatureSetPy *feature_set;
 
     // DoubleFeatureTransformerSlice *input;
-    FeatureTransformerSliceEmulate input = nullptr;
+    //FeatureTransformerSliceEmulate input = nullptr;
+    FeatTransSlow input = nullptr;
     torch::nn::Linear l1 = nullptr;
     torch::nn::Linear l2 = nullptr;
     torch::nn::Linear output = nullptr;

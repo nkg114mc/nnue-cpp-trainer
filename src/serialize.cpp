@@ -47,21 +47,20 @@ public:
     }
 
 /*
-    def __init__(self, model):
+    NNUEWriter(NNUEModel &model) {
         self.buf = bytearray()
 
         fc_hash = self.fc_hash(model)
         self.write_header(model, fc_hash)
-        self.int32(model.feature_set.hash ^ (M.L1 * 2))  # Feature transformer hash
+        self.int32(model.feature_set.hash ^ (M.L1 * 2))  // Feature transformer hash
         self.write_feature_transformer(model)
-        self.int32(fc_hash)  # FC layers hash
-        self.write_fc_layer(model.l1)
-        self.write_fc_layer(model.l2)
-        self.write_fc_layer(model.output, is_output=True)
+        self.int32(fc_hash)  // FC layers hash
+        self.write_fc_layer(model.l1, false);
+        self.write_fc_layer(model.l2, false);
+        self.write_fc_layer(model.output, true);
+    }
 
-
-
-    def write_header(self, model, fc_hash):
+    void write_header(NNUEModel &model, uint32_t fc_hash) {
         self.int32(VERSION)  # version
         self.int32(fc_hash ^ model.feature_set.hash ^ (M.L1 * 2))  # halfkp network hash
         # description = b"Features=HalfKP(Friend)[41024->256x2],"
@@ -71,8 +70,9 @@ public:
         self.int32(len(description))  # Network definition
         self.buf.extend(description)
         print("description:", model.description)
+    }
 
-    def coalesce_ft_weights(self, model, layer):
+    void coalesce_ft_weights(NNUEModel &model, layer) {
         weight = layer.weight.data
         indices = model.feature_set.get_virtual_to_real_features_gather_indices()
         weight_coalesced = weight.new_zeros((model.feature_set.num_real_features, weight.shape[1]))
@@ -80,8 +80,9 @@ public:
             weight_coalesced[i_real, :] = sum(weight[i_virtual, :] for i_virtual in is_virtual)
 
         return weight_coalesced
+    }
 
-    def write_feature_transformer(self, model):
+    void write_feature_transformer(NNUEModel &model) {
         # int16 bias = round(x * 127)
         # int16 weight = round(x * 127)
         layer = model.input
@@ -95,8 +96,9 @@ public:
         ascii_hist('ft weight:', weight.numpy())
         # weights stored as [41024][256]
         self.buf.extend(weight.flatten().numpy().tobytes())
+    }
 
-    def write_fc_layer(self, layer, is_output=False):
+    void write_fc_layer( layer, bool is_output) {
         # FC layers are stored as int8 weights, and int32 biases
         kWeightScaleBits = 6
         kActivationScale = 127.0
@@ -130,11 +132,12 @@ public:
             weight = new_w
         # Stored as [outputs][inputs], so we can flatten
         self.buf.extend(weight.flatten().numpy().tobytes())
+    }
 
-    def int32(self, v):
+    void int32(self, v) {
         self.buf.extend(struct.pack("<I", v))
+    }
 
-    
 */
 
 
@@ -162,7 +165,7 @@ public:
 
         read_header(feature_set, fc_hash);
         read_int32(feature_set->get_hash() ^ (L1 * 2));  // Feature transformer hash
-        read_feature_transformer(model->input);
+        //read_feature_transformer(model->input);
         read_int32(fc_hash);  // FC layers hash
         read_fc_layer(model->l1, false);
         read_fc_layer(model->l2, false);
@@ -184,45 +187,42 @@ private:
 
         std::cout << "Model description: [" << model->description << "]" << std::endl;
     }
-/*
-    torch::Tensor tensor(dtype, shape) {
-        d = numpy.fromfile(self.f, dtype, reduce(operator.mul, shape, 1))
-        d = torch.from_numpy(d.astype(numpy.float32))
-        d = d.reshape(shape)
-        return d
 
+    torch::Tensor read_tensor(const torch::Dtype &dtype, const torch::IntArrayRef &shape) {
+        //d = numpy.fromfile(self.f, dtype, reduce(operator.mul, shape, 1))
+        //d = torch.from_numpy(d.astype(numpy.float32))
+        //d = d.reshape(shape)
+        //return d
+        return torch::eye(3);
     }
-*/
+
     void read_feature_transformer(FeatureTransformerSliceEmulate &layer) {
-/*
-        layer.bias.data = self.tensor(numpy.int16, layer.bias.shape).divide(127.0)
+        layer->bias = read_tensor(torch::kInt16, layer->bias.sizes()).divide(127.0);
         // weights stored as [41024][256]
-        weights = self.tensor(numpy.int16, layer.weight.shape)
-        layer.weight.data = weights.divide(127.0)
-*/
+        auto weights_int = read_tensor(torch::kInt16, layer->weight.sizes());
+        layer->weight = weights_int.divide(127.0);
     }
 
-    void read_fc_layer(torch::nn::Linear &layer, bool is_output) {
-/*
-        # FC layers are stored as int8 weights, and int32 biases
-        kWeightScaleBits = 6
-        kActivationScale = 127.0
-        if not is_output:
-            kBiasScale = (1 << kWeightScaleBits) * kActivationScale  # = 8128
-        else:
-            kBiasScale = 9600.0  # kPonanzaConstant * FV_SCALE = 600 * 16 = 9600
-        kWeightScale = kBiasScale / kActivationScale  # = 64.0 for normal layers
+    void read_fc_layer(torch::nn::Linear &layer, bool is_output) {/*
+        // FC layers are stored as int8 weights, and int32 biases
+        int kWeightScaleBits = 6;
+        double kActivationScale = 127.0;
+        if (!is_output) {
+            kBiasScale = (1 << kWeightScaleBits) * kActivationScale  // = 8128
+        } else {
+            kBiasScale = 9600.0  // kPonanzaConstant * FV_SCALE = 600 * 16 = 9600
+        }
+        kWeightScale = kBiasScale / kActivationScale  // = 64.0 for normal layers
 
-        # FC inputs are padded to 32 elements for simd.
+        // FC inputs are padded to 32 elements for simd.
         non_padded_shape = layer.weight.shape
-        padded_shape = (non_padded_shape[0], ((non_padded_shape[1] + 31) // 32) * 32)
+        padded_shape = (non_padded_shape[0], ((non_padded_shape[1] + 31) / 32) * 32)
 
-        layer.bias.data = self.tensor(numpy.int32, layer.bias.shape).divide(kBiasScale)
-        layer.weight.data = self.tensor(numpy.int8, padded_shape).divide(kWeightScale)
+        layer.bias.data = read_tensor(numpy.int32, layer.bias.shape).divide(kBiasScale);
+        layer.weight.data = read_tensor(numpy.int8, padded_shape).divide(kWeightScale);
 
-        # Strip padding.
-        layer.weight.data = layer.weight.data[:non_padded_shape[0], :non_padded_shape[1]]
-*/
+        // Strip padding.
+        layer.weight.data = layer.weight.data[:non_padded_shape[0], :non_padded_shape[1]]*/
     }
 
     uint32_t read_int32(uint32_t expected) {

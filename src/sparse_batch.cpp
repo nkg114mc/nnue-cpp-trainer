@@ -121,35 +121,44 @@ void train_nnue_model()
     torch::optim::Adam optimizer(nnue_model->parameters(), optim_option);
 
     int batch_size = 10000;
-    auto stream = create_sparse_batch_stream("HalfKP", 4, "/media/mc/Fastdata/Stockfish-NNUE/validate1m/val_1m_d14.bin", batch_size, false, false, 0, false);
+    auto stream = create_sparse_batch_stream("HalfKP", 4, "/media/mc/Fastdata/Stockfish-NNUE/trainingdata100m/trn_100m_d10.bin", batch_size, true, false, 0, false);
+    int64_t total_size = 100 * 1000000;
+    int64_t batch_cnt = total_size / batch_size;
     auto t0 = std::chrono::high_resolution_clock::now();
 
     std::cout << "batch_size = " << batch_size << '\n';
     int iter_id = -1;
     for (int epoch = 0; epoch <= 10; epoch++)
     {
-        for (int batch_id = 0; batch_id < 100; batch_id++)
+        for (int batch_id = 0; batch_id < batch_cnt; batch_id++)
         {
             iter_id++;
 
             SparseBatch *batch;
-            std::cout << "start " << "Epoch " << epoch << " batch " << batch_id << '\n';
+            std::cout << "start " << "Epoch " << epoch << " batch " << batch_id << "iter " << iter_id << '\n';
             batch = stream->next();
 
             SparseBatchTensors batch_tensors(batch);
             // std::cout << "before forward" << std::endl;
-
+/*
             auto output = nnue_model->forward(batch_tensors.us,
                                               batch_tensors.them,
                                               batch_tensors.white_indices,
                                               batch_tensors.white_values,
                                               batch_tensors.black_indices,
                                               batch_tensors.black_values);
-            // std::cout << output.sizes() << std::endl;
-            auto loss = nnue_model->compute_loss(batch_tensors, iter_id, "some_loss");
-
+*/
+            //std::cout << "output = " <<  output << std::endl;
             optimizer.zero_grad();
+
+            auto loss = nnue_model->compute_loss(batch_tensors, iter_id, "some_loss");
+            
+            //std::cout << nnue_model->input->bias.grad() << std::endl;
+            //std::cout << nnue_model->l1->bias.grad() << std::endl;
             loss.backward();
+            //std::cout << nnue_model->input->bias.grad().sizes() << std::endl;
+            //std::cout << nnue_model->input->weight.grad().sizes() << std::endl;
+            //std::cout << nnue_model->l1->bias.grad().sizes() << std::endl;
             optimizer.step();
 
             destroy_sparse_batch(batch);

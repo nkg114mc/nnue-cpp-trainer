@@ -16,7 +16,8 @@ NNUEModelImpl::NNUEModelImpl(FeatureSetPy *feature_set_ptr)
     this->feature_set = feature_set_ptr;
 
     // this->input = register_module<FeatureTransformerSliceEmulate>("input", std::make_shared<FeatureTransformerSliceEmulate>(INPUT_DIM, L1));
-    this->input = FeatureTransformerSliceEmulate(INPUT_DIM, L1);
+    //this->input = FeatureTransformerSliceEmulate(INPUT_DIM, L1);
+    this->input = FeatTransSlow(INPUT_DIM, L1);
     register_module("input", this->input);
     this->l1 = register_module("l1", torch::nn::Linear(2 * L1, L2));
     this->l2 = register_module("l2", torch::nn::Linear(L2, L3));
@@ -38,9 +39,12 @@ torch::Tensor NNUEModelImpl::forward(torch::Tensor us,
                                      torch::Tensor black_indices,
                                      torch::Tensor black_values)
 {
-    auto wb_pair = input->forward_separate(white_indices, white_values, black_indices, black_values);
-    auto w = wb_pair.first;
-    auto b = wb_pair.second;
+    //auto wb_pair = input->forward_separate(white_indices, white_values, black_indices, black_values);
+    //auto w = wb_pair.first;
+    //auto b = wb_pair.second;
+    auto ft_outputs = input->forward(white_indices, white_values, black_indices, black_values);
+    auto w = ft_outputs[0];
+    auto b = ft_outputs[1];
     auto l0_ = (us * torch::cat({w, b}, 1)) + (them * torch::cat({b, w}, 1));
     // clamp here is used as a clipped relu to (0.0, 1.0)
     auto l0_clamp_ = torch::clamp(l0_, 0.0, 1.0);
@@ -102,8 +106,8 @@ torch::Tensor NNUEModelImpl::compute_loss(SparseBatchTensors batch_tensors,
 
     // 600 is the kPonanzaConstant scaling factor needed to convert the training net output to a score.
     // This needs to match the value used in the serializer
-    double nnue2score = 600;
-    double scaling = 361;
+    const double nnue2score = 600;
+    const double scaling = 361;
 
     auto y = this->forward(batch_tensors.us,
                            batch_tensors.them,

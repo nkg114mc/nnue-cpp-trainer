@@ -3,7 +3,7 @@
 
 void test_read_batch_stream();
 void train_nnue_model();
-
+//void test_feature_transformer_backward();
 
 int main()
 {
@@ -13,4 +13,5 @@ int main()
     // test_construct_feature_transformer();
     //test_read_batch_stream();
     train_nnue_model();
+    //test_feature_transformer_backward();
 }
