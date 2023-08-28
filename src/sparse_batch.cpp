@@ -114,7 +114,7 @@ void train_nnue_model()
 
     FeatureSetPy feat_set;
     auto nnue_model = NNUEModel(&feat_set);
-    //torch::optim::SGD optimizer(nnue_model->parameters(), torch::optim::SGDOptions(learning_rate));
+    // torch::optim::SGD optimizer(nnue_model->parameters(), torch::optim::SGDOptions(learning_rate));
 
     auto optim_option = torch::optim::AdamOptions(learning_rate);
     optim_option.weight_decay(weight_decay);
@@ -135,24 +135,25 @@ void train_nnue_model()
             iter_id++;
 
             SparseBatch *batch;
-            std::cout << "start " << "Epoch " << epoch << " batch " << batch_id << "iter " << iter_id << '\n';
+            std::cout << "start "
+                      << "Epoch " << epoch << " batch " << batch_id << " iter " << iter_id << '\n';
             batch = stream->next();
 
             SparseBatchTensors batch_tensors(batch);
             // std::cout << "before forward" << std::endl;
-/*
-            auto output = nnue_model->forward(batch_tensors.us,
-                                              batch_tensors.them,
-                                              batch_tensors.white_indices,
-                                              batch_tensors.white_values,
-                                              batch_tensors.black_indices,
-                                              batch_tensors.black_values);
-*/
-            //std::cout << "output = " <<  output << std::endl;
+            /*
+                        auto output = nnue_model->forward(batch_tensors.us,
+                                                          batch_tensors.them,
+                                                          batch_tensors.white_indices,
+                                                          batch_tensors.white_values,
+                                                          batch_tensors.black_indices,
+                                                          batch_tensors.black_values);
+            */
+            // std::cout << "output = " <<  output << std::endl;
             optimizer.zero_grad();
 
             auto loss = nnue_model->compute_loss(batch_tensors, iter_id, "some_loss");
-            
+
             //std::cout << nnue_model->input->bias.grad() << std::endl;
             //std::cout << nnue_model->l1->bias.grad() << std::endl;
             loss.backward();
@@ -167,4 +168,50 @@ void train_nnue_model()
 
     auto t1 = std::chrono::high_resolution_clock::now();
     std::cout << (t1 - t0).count() / 1e9 << "s\n";
+}
+
+void training_speed_benckmark()
+{
+    FeatureSetPy feat_set;
+    auto nnue_model = NNUEModel(&feat_set);
+
+    auto optim_option = torch::optim::AdamOptions(0.001);
+    torch::optim::Adam optimizer(nnue_model->parameters(), optim_option);
+
+    int batch_size = 10000;
+    auto stream = create_sparse_batch_stream("HalfKP", 4, "/media/mc/Fastdata/Stockfish-NNUE/trainingdata100m/trn_100m_d10.bin", batch_size, true, false, 0, false);
+    int64_t total_size = 100 * 1000000;
+    int64_t batch_cnt = total_size / batch_size;
+
+    std::cout << "batch_size = " << batch_size << '\n';
+    int iter_id = -1;
+
+    auto t0 = std::chrono::system_clock::now();
+    for (int batch_id = 0; batch_id < batch_cnt; batch_id++)
+    {
+        auto iter_t0 = std::chrono::system_clock::now();
+        iter_id++;
+
+        SparseBatch *batch;
+        std::cout << "start " << "batch " << batch_id << " iter " << iter_id << '\n';
+        batch = stream->next();
+
+        SparseBatchTensors batch_tensors(batch);
+
+        optimizer.zero_grad();
+
+        auto loss = nnue_model->compute_loss(batch_tensors, iter_id, "some_loss");
+
+        loss.backward();
+
+        optimizer.step();
+
+        destroy_sparse_batch(batch);
+
+        auto iter_t1 = std::chrono::system_clock::now();
+        std::cout << "iteration time: " << (iter_t1 - iter_t0).count() / 1e9 << "s\n";
+    }
+
+    auto t1 = std::chrono::system_clock::now();
+    std::cout << "total time: " << (t1 - t0).count() / 1e9 << "s\n";
 }

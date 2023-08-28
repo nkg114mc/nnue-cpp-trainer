@@ -37,40 +37,58 @@ public:
         // ctx->mark_dirty({var});
         // return {var};
 
-        //std::cout << "-----------> weight require_grad = " << weight.requires_grad_() << std::endl;
-        //std::cout << "-----------> weight bias_grad = " << bias.requires_grad_() << std::endl;
+        ctx->save_for_backward({feature_indices_0, feature_values_0, feature_indices_1, feature_values_1, weight, bias});
 
-        auto output_0 = forward_single(ctx, feature_indices_0, feature_values_0, weight, bias);
-        auto output_1 = forward_single(ctx, feature_indices_1, feature_values_1, weight, bias);
+        // std::cout << "-----------> weight require_grad = " << weight.requires_grad_() << std::endl;
+        // std::cout << "-----------> weight bias_grad = " << bias.requires_grad_() << std::endl;
 
-        //std::cout << "-----------> output_0 sizes = " << output_0[0].sizes() << std::endl;
-        //std::cout << "-----------> output_1 sizes = " << output_1[0].sizes() << std::endl;
+        auto output_0 = forward_single(feature_indices_0, feature_values_0, weight, bias);
+        auto output_1 = forward_single(feature_indices_1, feature_values_1, weight, bias);
+
+        // std::cout << "-----------> output_0 sizes = " << output_0[0].sizes() << std::endl;
+        // std::cout << "-----------> output_1 sizes = " << output_1[0].sizes() << std::endl;
+
         return {output_0[0], output_1[0]};
     }
 
     static torch::autograd::tensor_list backward(torch::autograd::AutogradContext *ctx,
                                                  torch::autograd::tensor_list grad_outputs)
     {
-        auto grad_weight_bias_0 = backward_single(ctx, {grad_outputs[0]});
-        auto grad_weight_bias_1 = backward_single(ctx, {grad_outputs[1]});
+        auto saved = ctx->get_saved_variables();
+        auto feature_indices_0 = saved[0].contiguous();
+        auto feature_values_0 = saved[1].contiguous();
+        auto feature_indices_1 = saved[2].contiguous();
+        auto feature_values_1 = saved[3].contiguous();
+        auto weight = saved[4].contiguous();
+        auto bias = saved[5].contiguous();
+
+        auto grad_weight_bias_0 = backward_single(feature_indices_0,
+                                                  feature_values_0,
+                                                  weight,
+                                                  bias,
+                                                  {grad_outputs[0]});
+        auto grad_weight_bias_1 = backward_single(feature_indices_1,
+                                                  feature_values_1,
+                                                  weight,
+                                                  bias,
+                                                  {grad_outputs[1]});
         auto grad_weight = grad_weight_bias_0[2] + grad_weight_bias_1[2];
         auto grad_bias = grad_weight_bias_0[3] + grad_weight_bias_1[3];
 
-        //std::cout << "===========> grad_weight sizes = " << grad_weight.sizes() << std::endl;
-        //std::cout << "===========> grad_bias sizes = " << grad_bias.sizes() << std::endl;
-        
+        // std::cout << "===========> grad_weight sizes = " << grad_weight.sizes() << std::endl;
+        // std::cout << "===========> grad_bias sizes = " << grad_bias.sizes() << std::endl;
+
         // return {grad_weight, grad_bias};
         return {torch::Tensor(), torch::Tensor(), torch::Tensor(), torch::Tensor(), grad_weight, grad_bias};
     }
 
 private:
-    static torch::autograd::tensor_list forward_single(torch::autograd::AutogradContext *ctx,
-                                                       torch::Tensor feature_indices,
+    static torch::autograd::tensor_list forward_single(torch::Tensor feature_indices,
                                                        torch::Tensor feature_values,
                                                        torch::Tensor weight,
                                                        torch::Tensor bias)
     {
-        ctx->save_for_backward({feature_indices, feature_values, weight, bias});
+        // ctx->save_for_backward({feature_indices, feature_values, weight, bias});
 
         int batch_size = feature_indices.size(0);
         int num_inputs = weight.size(0);
@@ -91,16 +109,71 @@ private:
         return {y};
     }
 
-    static torch::autograd::tensor_list backward_single(torch::autograd::AutogradContext *ctx,
+    static torch::autograd::tensor_list backward_single(torch::Tensor feature_indices,
+                                                        torch::Tensor feature_values,
+                                                        torch::Tensor weight,
+                                                        torch::Tensor bias,
                                                         torch::autograd::tensor_list grad_outputs)
     {
         torch::Tensor grad_output = grad_outputs[0].contiguous();
 
-        auto saved = ctx->get_saved_variables();
-        auto feature_indices = saved[0].contiguous();
-        auto feature_values = saved[1].contiguous();
-        auto weight = saved[2].contiguous();
-        auto bias = saved[3].contiguous();
+        int batch_size = feature_indices.size(0);
+        int num_inputs = weight.size(0);
+        int max_active_features = feature_indices.size(1);
+        auto inputs_transpose = torch::zeros({num_inputs, batch_size}, torch::kF32);
+
+        for (int i = 0; i < batch_size; i++)
+        {
+            for (int j = 0; j < max_active_features; j++)
+            {
+                int feature = feature_indices[i][j].item<int>();
+                float value = feature_values[i][j].item<float>();
+                inputs_transpose[feature][i] += value;
+            }
+        }
+
+        auto weight_grad = torch::mm(inputs_transpose, grad_output);
+        auto bias_grad = grad_output.sum(0); //(grad_output, dim=0)
+
+        return {torch::Tensor(), torch::Tensor(), weight_grad, bias_grad};
+    }
+
+    //////////////////// Faster version 1 //////////////////////////////////////
+
+    static torch::autograd::tensor_list forward_single_2(torch::Tensor feature_indices,
+                                                         torch::Tensor feature_values,
+                                                         torch::Tensor weight,
+                                                         torch::Tensor bias)
+    {
+        // ctx->save_for_backward({feature_indices, feature_values, weight, bias});
+
+        int batch_size = feature_indices.size(0);
+        //int num_inputs = weight.size(0);
+        int num_outputs = weight.size(0);
+        int max_active_features = feature_indices.size(1);
+        auto outputs = torch::zeros({batch_size, num_outputs}, torch::kF32);
+
+        for (int i = 0; i < batch_size; i++)
+        {
+            for (int j = 0; j < max_active_features; j++)
+            {
+                int feature = feature_indices[i][j].item<int>();
+                float value = feature_values[i][j].item<float>();
+                outputs[i] += weight[feature] * value;
+            }
+        }
+
+        torch::Tensor y = outputs + bias;
+        return {y};
+    }
+
+    static torch::autograd::tensor_list backward_single_2(torch::Tensor feature_indices,
+                                                          torch::Tensor feature_values,
+                                                          torch::Tensor weight,
+                                                          torch::Tensor bias,
+                                                          torch::autograd::tensor_list grad_outputs)
+    {
+        torch::Tensor grad_output = grad_outputs[0].contiguous();
 
         int batch_size = feature_indices.size(0);
         int num_inputs = weight.size(0);
