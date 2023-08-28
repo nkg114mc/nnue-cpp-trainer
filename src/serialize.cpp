@@ -270,6 +270,7 @@ private:
         for (int i = 1; i < shape.size(); i++) {
             length *= shape[i];
         }
+        std::cout << "length = " << length << std::endl;
         return length;
     }
 
@@ -279,9 +280,17 @@ private:
         //d = d.reshape(shape)
         //return d
         auto options = torch::TensorOptions().dtype(dtype);
-        torch::Tensor tensor = torch::full(shape, 0, options);
+        //torch::Tensor tensor = torch::full(shape, -1, options);
         uint32_t length = get_total_size(shape);
-        inf.read(reinterpret_cast<char*>(tensor.data_ptr()), sizeof(dtype) * length);
+
+        char *tmp_data = new char[torch::elementSize(dtype) * length + 1];
+        
+        std::cout << "before read " << (torch::elementSize(dtype) * length) << std::endl;
+        inf.read(tmp_data, torch::elementSize(dtype) * length);
+        std::cout << "before from blob" << std::endl;
+        auto tensor = torch::from_blob(tmp_data, shape, options);
+        tensor.contiguous();
+        delete tmp_data;
         return tensor;
     }
 
@@ -291,6 +300,8 @@ private:
         // weights stored as [41024][256]
         auto weights_int = read_tensor(torch::kInt16, layer->weight.sizes());
         layer->weight = weights_int.divide(127.0);
+
+        std::cout << "ft bias = " << layer->bias << std::endl;
     }
 
     void read_fc_layer(torch::nn::Linear &layer, bool is_output) {
@@ -317,6 +328,8 @@ private:
 
         // Strip padding.
         //layer.weight.data = layer.weight.data[:non_padded_shape[0], :non_padded_shape[1]]
+
+        std::cout << layer->bias << std::endl;
     }
 
     uint32_t read_int32(uint32_t expected) {

@@ -68,7 +68,8 @@ void test_read_batch_stream()
     FeatureSetPy fs;
     // load_model_from_nnuebin("./nn-myoutput.nnue", &fs);
     // load_model_from_nnuebin("./nn-62ef826d1a6d.nnue", &fs);
-    load_model_from_nnuebin("./output-0.nnue", &fs);
+    // load_model_from_nnuebin("./output-0.nnue", &fs);
+    load_model_from_nnuebin("/home/mc/sidework/chessengines/Stockfish-sf_132/src/nn-62ef826d1a6d.nnue", &fs);
 
     int batch_size = 10000;
     auto stream = create_sparse_batch_stream("HalfKP", 4, "/media/mc/Fastdata/Stockfish-NNUE/validate1m/val_1m_d14.bin", batch_size, false, false, 0, false);
