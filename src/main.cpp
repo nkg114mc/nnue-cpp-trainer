@@ -12,7 +12,8 @@ int main()
     std::cout << tensor << std::endl;
 
     // test_construct_feature_transformer();
-    //test_read_batch_stream();
+    test_read_batch_stream();
+
     //train_nnue_model();
-    training_speed_benckmark();
+    //training_speed_benckmark();
 }

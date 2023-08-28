@@ -139,7 +139,79 @@ public:
     }
 
 */
+private:
 
+/*
+// read evaluation function parameters
+template <typename T>
+bool ReadParameters(std::istream& stream, const AlignedPtr<T>& pointer) {
+  std::uint32_t header;
+  stream.read(reinterpret_cast<char*>(&header), sizeof(header));
+  if (!stream || header != T::GetHashValue()) return false;
+  return pointer->ReadParameters(stream);
+}
+
+// write evaluation function parameters
+template <typename T>
+bool WriteParameters(std::ostream& stream, const AlignedPtr<T>& pointer) {
+  constexpr std::uint32_t header = T::GetHashValue();
+  stream.write(reinterpret_cast<const char*>(&header), sizeof(header));
+  return pointer->WriteParameters(stream);
+}
+
+}  // namespace Detail
+
+// Initialize the evaluation function parameters
+void Initialize() {
+  Detail::Initialize(feature_transformer);
+  Detail::Initialize(network);
+}
+
+}  // namespace
+
+// read the header
+bool ReadHeader(std::istream& stream,
+  std::uint32_t* hash_value, std::string* architecture) {
+  std::uint32_t version, size;
+  stream.read(reinterpret_cast<char*>(&version), sizeof(version));
+  stream.read(reinterpret_cast<char*>(hash_value), sizeof(*hash_value));
+  stream.read(reinterpret_cast<char*>(&size), sizeof(size));
+  if (!stream || version != kVersion) return false;
+  architecture->resize(size);
+  stream.read(&(*architecture)[0], size);
+  return !stream.fail();
+}
+
+// write the header
+bool WriteHeader(std::ostream& stream,
+  std::uint32_t hash_value, const std::string& architecture) {
+  stream.write(reinterpret_cast<const char*>(&kVersion), sizeof(kVersion));
+  stream.write(reinterpret_cast<const char*>(&hash_value), sizeof(hash_value));
+  const std::uint32_t size = static_cast<std::uint32_t>(architecture.size());
+  stream.write(reinterpret_cast<const char*>(&size), sizeof(size));
+  stream.write(architecture.data(), size);
+  return !stream.fail();
+}
+
+// read evaluation function parameters
+bool ReadParameters(std::istream& stream) {
+  std::uint32_t hash_value;
+  std::string architecture;
+  if (!ReadHeader(stream, &hash_value, &architecture)) return false;
+  if (hash_value != kHashValue) return false;
+  if (!Detail::ReadParameters(stream, feature_transformer)) return false;
+  if (!Detail::ReadParameters(stream, network)) return false;
+  return stream && stream.peek() == std::ios::traits_type::eof();
+}
+
+// write evaluation function parameters
+bool WriteParameters(std::ostream& stream) {
+  if (!WriteHeader(stream, kHashValue, GetArchitectureString())) return false;
+  if (!Detail::WriteParameters(stream, feature_transformer)) return false;
+  if (!Detail::WriteParameters(stream, network)) return false;
+  return !stream.fail();
+}
+*/
 
 };
 
@@ -159,17 +231,19 @@ public:
         //delete model;
     }
 
-    void read_model() {
+    bool read_model() {
         this->model = NNUEModel(feature_set);
         uint32_t fc_hash = NNUEWriter::fc_hash(this->model);
 
         read_header(feature_set, fc_hash);
         read_int32(feature_set->get_hash() ^ (L1 * 2));  // Feature transformer hash
-        //read_feature_transformer(model->input);
+        read_feature_transformer(model->input);
         read_int32(fc_hash);  // FC layers hash
         read_fc_layer(model->l1, false);
         read_fc_layer(model->l2, false);
         read_fc_layer(model->output, true);
+
+        return inf && inf.peek() == std::ios::traits_type::eof();
     }
 
 private:
@@ -188,61 +262,82 @@ private:
         std::cout << "Model description: [" << model->description << "]" << std::endl;
     }
 
+    uint32_t get_total_size(const torch::IntArrayRef &shape) {
+        if (shape.size() == 0) {
+            return 0;
+        }
+        uint32_t length = shape[0];
+        for (int i = 1; i < shape.size(); i++) {
+            length *= shape[i];
+        }
+        return length;
+    }
+
     torch::Tensor read_tensor(const torch::Dtype &dtype, const torch::IntArrayRef &shape) {
         //d = numpy.fromfile(self.f, dtype, reduce(operator.mul, shape, 1))
         //d = torch.from_numpy(d.astype(numpy.float32))
         //d = d.reshape(shape)
         //return d
-        return torch::eye(3);
+        auto options = torch::TensorOptions().dtype(dtype);
+        torch::Tensor tensor = torch::full(shape, 0, options);
+        uint32_t length = get_total_size(shape);
+        inf.read(reinterpret_cast<char*>(tensor.data_ptr()), sizeof(dtype) * length);
+        return tensor;
     }
 
-    void read_feature_transformer(FeatureTransformerSliceEmulate &layer) {
+    //void read_feature_transformer(FeatureTransformerSliceEmulate &layer) {
+    void read_feature_transformer(FeatTransSlow &layer) {
         layer->bias = read_tensor(torch::kInt16, layer->bias.sizes()).divide(127.0);
         // weights stored as [41024][256]
         auto weights_int = read_tensor(torch::kInt16, layer->weight.sizes());
         layer->weight = weights_int.divide(127.0);
     }
 
-    void read_fc_layer(torch::nn::Linear &layer, bool is_output) {/*
+    void read_fc_layer(torch::nn::Linear &layer, bool is_output) {
         // FC layers are stored as int8 weights, and int32 biases
         int kWeightScaleBits = 6;
         double kActivationScale = 127.0;
+        double kBiasScale = 1.0;
         if (!is_output) {
-            kBiasScale = (1 << kWeightScaleBits) * kActivationScale  // = 8128
+            kBiasScale = (1 << kWeightScaleBits) * kActivationScale;  // = 8128
         } else {
-            kBiasScale = 9600.0  // kPonanzaConstant * FV_SCALE = 600 * 16 = 9600
+            kBiasScale = 9600.0;  // kPonanzaConstant * FV_SCALE = 600 * 16 = 9600
         }
-        kWeightScale = kBiasScale / kActivationScale  // = 64.0 for normal layers
+        double kWeightScale = kBiasScale / kActivationScale;  // = 64.0 for normal layers
 
         // FC inputs are padded to 32 elements for simd.
-        non_padded_shape = layer.weight.shape
-        padded_shape = (non_padded_shape[0], ((non_padded_shape[1] + 31) / 32) * 32)
+        auto non_padded_shape = layer->weight.sizes();
+        auto padded_shape = std::vector<int64_t>{non_padded_shape[0], ((non_padded_shape[1] + 31) / 32) * 32};
 
-        layer.bias.data = read_tensor(numpy.int32, layer.bias.shape).divide(kBiasScale);
-        layer.weight.data = read_tensor(numpy.int8, padded_shape).divide(kWeightScale);
+        std::cout << "non_padded_shape = " << layer->weight.sizes() << std::endl;
+        std::cout << "padded_shape = " << padded_shape[1] << std::endl;
+
+        layer->bias = read_tensor(torch::kInt32, layer->bias.sizes()).divide(kBiasScale);
+        auto padded_weight = read_tensor(torch::kInt8, padded_shape).divide(kWeightScale);
 
         // Strip padding.
-        layer.weight.data = layer.weight.data[:non_padded_shape[0], :non_padded_shape[1]]*/
+        //layer.weight.data = layer.weight.data[:non_padded_shape[0], :non_padded_shape[1]]
     }
 
     uint32_t read_int32(uint32_t expected) {
         uint32_t v;
-        bool sizeOk = (bool)inf.read((char*)(&v), sizeof(uint32_t));
+        bool sizeOk = (bool)inf.read(reinterpret_cast<char*>(&v), sizeof(v));
         if (!sizeOk) {
             std::cerr << "Read int32 failed" << std::endl;
         }
         return v;
-    }
-
-    void assert_int32(int32_t expected) {
-
     }
 };
 
 NNUEModel load_model_from_nnuebin(std::string source_path,
                              FeatureSetPy *feature_set) {
     NNUEReader reader(source_path, feature_set);
-    reader.read_model();
+    bool read_ok = reader.read_model();
+    if (!read_ok) {
+        std::cout << "Read error" << std::endl;
+    } else {
+        std::cout << "Read OK" << std::endl;
+    }
     NNUEModel nnue_model = reader.model;
 }
 
