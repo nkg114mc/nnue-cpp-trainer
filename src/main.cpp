@@ -1,6 +1,8 @@
 #include <torch/script.h>
 #include <iostream>
 
+#include "ranger.h"
+
 void test_read_batch_stream();
 void train_nnue_model();
 void training_speed_benckmark();
@@ -12,8 +14,12 @@ int main()
     std::cout << tensor << std::endl;
 
     // test_construct_feature_transformer();
-    test_read_batch_stream();
+    //test_read_batch_stream();
 
-    //train_nnue_model();
+    train_nnue_model();
     //training_speed_benckmark();
+
+    //test_create_ranger_optimizer();
+    //test_centralized_gradient();
+    //test_compute_buffer();
 }

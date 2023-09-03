@@ -6,7 +6,7 @@ find_package(Torch REQUIRED)
 find_package(Threads REQUIRED)
 
 
-add_executable(cpp-trainer main.cpp model.cpp serialize.cpp feature_transformer.cpp sparse_batch.cpp feature_set.cpp)
+add_executable(cpp-trainer main.cpp model.cpp serialize.cpp feature_transformer.cpp sparse_batch.cpp feature_set.cpp ranger.cpp)
 target_link_libraries(cpp-trainer "${TORCH_LIBRARIES}")
 target_link_libraries(cpp-trainer Threads::Threads)
 set_property(TARGET cpp-trainer PROPERTY CXX_STANDARD 17)

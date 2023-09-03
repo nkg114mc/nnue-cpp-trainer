@@ -32,6 +32,7 @@ class SparseBatch(ctypes.Structure):
 #include "sparse_batch.h"
 #include "model.h"
 #include "serialize.h"
+#include "ranger.h"
 
 SparseBatchTensors::SparseBatchTensors(SparseBatch *batch)
 {
@@ -110,16 +111,19 @@ void test_read_batch_stream()
 
 void train_nnue_model()
 {
-    const double learning_rate = 0.0001;
-    const double weight_decay = 0.00001;
-
     FeatureSetPy feat_set;
     auto nnue_model = NNUEModel(&feat_set);
     // torch::optim::SGD optimizer(nnue_model->parameters(), torch::optim::SGDOptions(learning_rate));
 
+    const double learning_rate = 0.0001;
+    const double weight_decay = 0.00001;
     auto optim_option = torch::optim::AdamOptions(learning_rate);
     optim_option.weight_decay(weight_decay);
-    torch::optim::Adam optimizer(nnue_model->parameters(), optim_option);
+    torch::optim::Adam adam_optimizer(nnue_model->parameters(), optim_option);
+
+    auto ranger_option = RangerOptions().betas({0.9, 0.999}).eps(1.0e-7);
+    Ranger optimizer({torch::optim::OptimizerParamGroup(nnue_model->parameters())}, ranger_option);
+
 
     int batch_size = 10000;
     auto stream = create_sparse_batch_stream("HalfKP", 4, "/media/mc/Fastdata/Stockfish-NNUE/trainingdata100m/trn_100m_d10.bin", batch_size, true, false, 0, false);
