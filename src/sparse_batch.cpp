@@ -109,20 +109,95 @@ void test_read_batch_stream()
     std::cout << (t1 - t0).count() / 1e9 << "s\n";
 }
 
+void configure_ranger_optimizer(NNUEModel &model, RangerOptions &default_option) {
+
+    std::vector<torch::Tensor> input_params{model->input->parameters()};
+    std::vector<torch::Tensor> hidden_params;
+    for (auto &p : model->l1->parameters()) {
+        hidden_params.push_back(p);
+    }
+    for (auto &p : model->l2->parameters()) {
+        hidden_params.push_back(p);
+    }
+    std::vector<torch::Tensor> output_params{model->output->parameters()};
+
+    auto input_option = RangerOptions(default_option);
+    auto hidden_option = RangerOptions(default_option);
+    auto output_option = RangerOptions(default_option);
+
+    std::cout << (&default_option) << " " << (&input_option) << std::endl;
+    std::cout << "learning_reate" << " " << input_option.lr() << std::endl;
+
+    std::cout << model->input->parameters().size() << " " << input_params.size() << std::endl;
+    std::cout << model->input->parameters().size() << " " << output_params.size() << std::endl;
+    std::cout << model->l1->parameters().size() << "+" << model->l2->parameters().size() << " " << hidden_params.size() << std::endl;
+    /*
+        LR = 1e-3
+        train_params = [
+            {'params': self.get_layers(lambda x: self.input == x), 'lr': LR, 'gc_dim': 0},
+            {'params': self.get_layers(lambda x: self.output != x and self.input != x), 'lr': LR},
+            {'params': self.get_layers(lambda x: self.output == x), 'lr': LR / 10},
+        ]
+    */
+    const double LR = 1e-3;
+    input_option.lr(LR).gc_dim(0);
+    hidden_option.lr(LR);
+    output_option.lr(LR / 10.0);
+
+/*
+    result.push_back(torch::optim::OptimizerParamGroup(input_params, std::make_unique<torch::optim::OptimizerOptions>(input_option)));
+    result.push_back(torch::optim::OptimizerParamGroup(hidden_params, std::make_unique<torch::optim::OptimizerOptions>(hidden_option)));
+    result.push_back(torch::optim::OptimizerParamGroup(output_params, std::make_unique<torch::optim::OptimizerOptions>(output_option)));
+*/
+}
+
 void train_nnue_model()
 {
     FeatureSetPy feat_set;
     auto nnue_model = NNUEModel(&feat_set);
     // torch::optim::SGD optimizer(nnue_model->parameters(), torch::optim::SGDOptions(learning_rate));
-
+/*
     const double learning_rate = 0.0001;
     const double weight_decay = 0.00001;
     auto optim_option = torch::optim::AdamOptions(learning_rate);
     optim_option.weight_decay(weight_decay);
     torch::optim::Adam adam_optimizer(nnue_model->parameters(), optim_option);
-
+*/
     auto ranger_option = RangerOptions().betas({0.9, 0.999}).eps(1.0e-7);
-    Ranger optimizer({torch::optim::OptimizerParamGroup(nnue_model->parameters())}, ranger_option);
+    
+    std::vector<torch::Tensor> input_params{nnue_model->input->parameters()};
+    std::vector<torch::Tensor> hidden_params;
+    for (auto &p : nnue_model->l1->parameters()) {
+        hidden_params.push_back(p);
+    }
+    for (auto &p : nnue_model->l2->parameters()) {
+        hidden_params.push_back(p);
+    }
+    std::vector<torch::Tensor> output_params{nnue_model->output->parameters()};
+
+    RangerOptions input_option(ranger_option);
+    RangerOptions hidden_option(ranger_option);
+    RangerOptions output_option(ranger_option);
+    /*
+        LR = 1e-3
+        train_params = [
+            {'params': self.get_layers(lambda x: self.input == x), 'lr': LR, 'gc_dim': 0},
+            {'params': self.get_layers(lambda x: self.output != x and self.input != x), 'lr': LR},
+            {'params': self.get_layers(lambda x: self.output == x), 'lr': LR / 10},
+        ]
+    */
+    const double LR = 1e-3;
+    input_option.lr(LR).gc_dim(0);
+    hidden_option.lr(LR);
+    output_option.lr(LR / 10.0);
+    auto g1 = torch::optim::OptimizerParamGroup(input_params);
+    auto g2 = torch::optim::OptimizerParamGroup(hidden_params);
+    auto g3 = torch::optim::OptimizerParamGroup(output_params);
+    g1.set_options(std::make_unique<RangerOptions>(input_option));
+    g2.set_options(std::make_unique<RangerOptions>(hidden_option));
+    g3.set_options(std::make_unique<RangerOptions>(output_option));
+    Ranger optimizer({g1, g2, g3}, ranger_option);
+    //Ranger optimizer({torch::optim::OptimizerParamGroup(nnue_model->parameters())}, ranger_option);
 
 
     int batch_size = 10000;

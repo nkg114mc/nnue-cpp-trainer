@@ -9,6 +9,7 @@
 struct TORCH_API RangerOptions : public torch::optim::OptimizerCloneableOptions<RangerOptions>
 {
     RangerOptions(double lr = 1e-3);
+    RangerOptions(const RangerOptions &other);
 /*
         double lr = 1e-3,                                                                        // lr
         double alpha = 0.5, int k = 6, int N_sma_threshhold = 5,                                 // Ranger options

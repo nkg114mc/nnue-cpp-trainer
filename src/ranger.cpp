@@ -434,10 +434,12 @@ torch::Tensor Ranger::step(LossClosure closure)
             TORCH_CHECK(!grad.is_sparse(), "Adam does not support sparse gradients");
 
             // auto p_data_fp32 = p.data().float();
-            auto p_data_fp32 = p.toType(torch::kFloat32); //.float();
+            auto p_data_fp32 = p.toType(torch::kFloat32);
 
             auto param_state = state_.find(c10::guts::to_string(p.unsafeGetTensorImpl()));
             auto &options = static_cast<RangerOptions &>(group.options());
+
+            //std::cout << "Group[" << &p << "]: " << options.lr() << " " << options.gc_dim() << std::endl;
 
             // State initialization
             if (param_state == state_.end())
@@ -640,6 +642,24 @@ void test_compute_buffer()
 //// RangerOptions
 
 RangerOptions::RangerOptions(double lr) : lr_(lr) {}
+
+#define copy_prop(name, src) name(src.name())
+
+RangerOptions::RangerOptions(const RangerOptions &other) {
+    copy_prop(lr, other);
+    copy_prop(alpha, other);
+    copy_prop(k, other);
+    copy_prop(N_sma_threshhold, other);
+    copy_prop(betas, other);
+    copy_prop(eps, other);
+    copy_prop(weight_decay, other);
+    copy_prop(use_gc, other);
+    copy_prop(gc_conv_only, other);
+    copy_prop(gc_loc, other);
+    copy_prop(gc_dim, other);
+}
+
+#undef copy_prop
 
 bool operator==(const RangerOptions &lhs, const RangerOptions &rhs)
 {
