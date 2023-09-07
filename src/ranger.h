@@ -5,6 +5,8 @@
 #include <torch/torch.h>
 #include <utility>
 #include <vector>
+#include <stdexcept>
+#include <string>
 
 struct TORCH_API RangerOptions : public torch::optim::OptimizerCloneableOptions<RangerOptions>
 {
@@ -81,15 +83,19 @@ public:
         // parameter checks
         if (!(0.0 <= hyperparams.alpha() && hyperparams.alpha() <= 1.0)) {
             //raise ValueError(f'Invalid slow update rate: {alpha}')
+            throw std::invalid_argument("Invalid slow update rate: " + std::to_string(hyperparams.alpha()));
         }
         if (!(hyperparams.k() >= 1)) {
             //raise ValueError(f'Invalid lookahead steps: {k}')
+            throw std::invalid_argument("Invalid lookahead steps: " + std::to_string(hyperparams.k()));
         }
         if (!(hyperparams.lr() > 0)) {
             //raise ValueError(f'Invalid Learning Rate: {lr}')
+            throw std::invalid_argument("Invalid Learning Rate: " + std::to_string(hyperparams.lr()));
         }
         if (!(hyperparams.eps() > 0)) {
             //raise ValueError(f'Invalid eps: {eps}')
+            throw std::invalid_argument("Invalid eps: " + std::to_string(hyperparams.eps()));
         }
 
         // parameter comments:
@@ -150,3 +156,4 @@ public:
 void test_create_ranger_optimizer();
 void test_centralized_gradient();
 void test_compute_buffer();
+void test_ranger_step();

@@ -208,6 +208,7 @@ class Ranger(Optimizer):
 
 */
 #include <iostream>
+#include <fstream>
 #include <vector>
 #include <initializer_list>
 #include <cstdint>
@@ -460,11 +461,11 @@ torch::Tensor Ranger::step(LossClosure closure)
 
                 state_[c10::guts::to_string(p.unsafeGetTensorImpl())] = std::move(state);
             }
-            else
-            {
+            //else
+            //{
                 // state['exp_avg'] = state['exp_avg'].type_as(p_data_fp32);
                 // state['exp_avg_sq'] = state['exp_avg_sq'].type_as(p_data_fp32);
-            }
+            //}
 
             // begin computations
             auto &state = static_cast<RangerParamState &>(*state_[c10::guts::to_string(p.unsafeGetTensorImpl())]);
@@ -607,38 +608,6 @@ void Ranger::show_hypers()
     std::cout << hyperparams.weight_decay() << std::endl;
 }
 
-void test_create_ranger_optimizer()
-{
-    auto model = torch::nn::Linear(10, 1);
-    auto optim_option = RangerOptions().lr(0.003).alpha(0.456);
-    Ranger optimizer({torch::optim::OptimizerParamGroup(model->parameters())}, optim_option);
-    optimizer.show_hypers();
-}
-
-void test_centralized_gradient()
-{
-    // auto x1 = torch::Tensor();
-    // torch::load(x1, "/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/x1.pt");
-    // std::cout << x1.sizes() << std::endl;
-}
-
-void test_compute_buffer()
-{
-    std::ifstream inf;
-    int step, threshold;
-    double beta1, beta2, N_sma, step_size;
-
-    inf.open("/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/buffer_input.txt");
-    while (!inf.eof())
-    {
-        inf >> step >> threshold >> beta1 >> beta2 >> N_sma >> step_size;
-        auto ret_pair = compute_buffer(step, threshold, beta1, beta2);
-        std::cout << std::get<0>(ret_pair) << " " << N_sma << std::endl;
-        std::cout << std::get<1>(ret_pair) << " " << step_size << std::endl;
-    }
-    inf.close();
-}
-
 //// RangerOptions
 
 RangerOptions::RangerOptions(double lr) : lr_(lr) {}
@@ -735,4 +704,121 @@ void RangerParamState::serialize(torch::serialize::OutputArchive &archive) const
 void RangerParamState::serialize(torch::serialize::InputArchive &archive)
 {
     _TORCH_OPTIM_DESERIALIZE_TORCH_ARG(int64_t, step);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+torch::Tensor load_txt_tensor(std::ifstream& inf) {
+
+    int n_dim = 0;
+    inf >> n_dim;
+
+    std::vector<int64_t> sizes_vec;
+    int64_t total = 1;
+    for (int i = 0; i < n_dim; i++) {
+        int64_t dim_size = 0;
+        inf >> dim_size;
+        sizes_vec.push_back(dim_size);
+        total *= dim_size;
+    }
+    std::cout << "n_dim = " << n_dim << std::endl;
+
+    float* tensor_value = new float[total];
+    for (int i = 0; i < total; i++) {
+        float value;
+        inf >> value;
+        //std::cout << value << " " << sizeof(double) << std::endl;
+        tensor_value[i] = value;
+    }
+    auto float_options = torch::TensorOptions().dtype(torch::kFloat32);
+    auto result = torch::from_blob(tensor_value, sizes_vec, float_options);
+    return result;
+}
+
+void test_create_ranger_optimizer()
+{
+    auto model = torch::nn::Linear(10, 1);
+    auto optim_option = RangerOptions().lr(0.003).alpha(0.456);
+    Ranger optimizer({torch::optim::OptimizerParamGroup(model->parameters())}, optim_option);
+    optimizer.show_hypers();
+}
+
+void test_centralized_gradient()
+{
+    std::ifstream inf;
+    inf.open("/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/gc_tests.txt");
+
+    for (int i = 0; i < 3; i++) {
+        torch::Tensor x = load_txt_tensor(inf);
+        torch::Tensor y = load_txt_tensor(inf);
+        torch::Tensor yhat = centralized_gradient(x, true, false, 0);
+
+        std::cout << "Case " << i << ":" << std::endl;
+        std::cout << y << std::endl; 
+        std::cout << yhat << std::endl;
+        std::cout << "difference norm = " << torch::norm(y - yhat) << std::endl;
+    }
+
+    inf.close();
+}
+
+void test_compute_buffer()
+{
+    std::ifstream inf;
+    int step, threshold;
+    double beta1, beta2, N_sma, step_size;
+
+    inf.open("/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/buffer_input.txt");
+    while (!inf.eof())
+    {
+        inf >> step >> threshold >> beta1 >> beta2 >> N_sma >> step_size;
+        auto ret_pair = compute_buffer(step, threshold, beta1, beta2);
+        std::cout << std::get<0>(ret_pair) << " " << N_sma << std::endl;
+        std::cout << std::get<1>(ret_pair) << " " << step_size << std::endl;
+    }
+    inf.close();
+}
+
+void test_step_single_param_(torch::Tensor x, torch::Tensor grad, torch::Tensor x_expected, RangerOptions option, RangerOptions default_option) {
+
+    x.mutable_grad() = grad;
+    auto grp = torch::optim::OptimizerParamGroup({x});
+    grp.set_options(std::make_unique<RangerOptions>(option));
+    Ranger optimizer({grp}, default_option);
+    
+    optimizer.step();
+
+    std::cout << "grad norm = " << torch::norm(grad) << std::endl;
+    std::cout << "x norm = " << torch::norm(x) << std::endl;
+    std::cout << "x_expected norm = " << torch::norm(x_expected) << std::endl;
+    std::cout << "difference norm = " << torch::norm(x - x_expected) << std::endl;
+}
+
+void test_ranger_step()
+{
+    std::ifstream inf;
+    inf.open("/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/step_test.txt");
+
+    auto ranger_option = RangerOptions().betas({0.9, 0.999}).eps(1.0e-7);
+    for (int group_id = 0; group_id < 8; group_id++) {
+        std::cout << "========================> Group " << group_id << std::endl;
+
+        torch::Tensor x = load_txt_tensor(inf);
+        torch::Tensor x_grad = load_txt_tensor(inf);
+        torch::Tensor x_expected = load_txt_tensor(inf);
+
+        RangerOptions group_option(ranger_option);
+        const double LR = 1e-3;
+        if (group_id < 2) { // input
+            group_option.lr(LR).gc_dim(0);
+        } else if (group_id > 6) { // output
+            group_option.lr(LR / 10.0);
+        } else {
+            group_option.lr(LR);
+        }
+
+        test_step_single_param_(x, x_grad, x_expected, group_option, ranger_option);
+    }
 }

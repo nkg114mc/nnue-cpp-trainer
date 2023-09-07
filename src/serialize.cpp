@@ -1,6 +1,7 @@
 #include <torch/torch.h>
 #include <cstdint>
 #include <fstream>
+#include <string>
 
 #include "model.h"
 
@@ -46,8 +47,12 @@ public:
         return 0;
     }
 
-/*
-    NNUEWriter(NNUEModel &model) {
+    NNUEWriter(NNUEModel &model, std::string fn, std::string description) {
+
+    }
+
+    void write_model() {
+        /*
         self.buf = bytearray()
 
         fc_hash = self.fc_hash(model)
@@ -58,9 +63,13 @@ public:
         self.write_fc_layer(model.l1, false);
         self.write_fc_layer(model.l2, false);
         self.write_fc_layer(model.output, true);
+        */
     }
 
+private:
+
     void write_header(NNUEModel &model, uint32_t fc_hash) {
+        /*
         self.int32(VERSION)  # version
         self.int32(fc_hash ^ model.feature_set.hash ^ (M.L1 * 2))  # halfkp network hash
         # description = b"Features=HalfKP(Friend)[41024->256x2],"
@@ -69,9 +78,9 @@ public:
         description = model.description.encode('utf-8')
         self.int32(len(description))  # Network definition
         self.buf.extend(description)
-        print("description:", model.description)
+        print("description:", model.description)*/
     }
-
+/*
     void coalesce_ft_weights(NNUEModel &model, layer) {
         weight = layer.weight.data
         indices = model.feature_set.get_virtual_to_real_features_gather_indices()
@@ -137,82 +146,7 @@ public:
     void int32(self, v) {
         self.buf.extend(struct.pack("<I", v))
     }
-
 */
-private:
-
-/*
-// read evaluation function parameters
-template <typename T>
-bool ReadParameters(std::istream& stream, const AlignedPtr<T>& pointer) {
-  std::uint32_t header;
-  stream.read(reinterpret_cast<char*>(&header), sizeof(header));
-  if (!stream || header != T::GetHashValue()) return false;
-  return pointer->ReadParameters(stream);
-}
-
-// write evaluation function parameters
-template <typename T>
-bool WriteParameters(std::ostream& stream, const AlignedPtr<T>& pointer) {
-  constexpr std::uint32_t header = T::GetHashValue();
-  stream.write(reinterpret_cast<const char*>(&header), sizeof(header));
-  return pointer->WriteParameters(stream);
-}
-
-}  // namespace Detail
-
-// Initialize the evaluation function parameters
-void Initialize() {
-  Detail::Initialize(feature_transformer);
-  Detail::Initialize(network);
-}
-
-}  // namespace
-
-// read the header
-bool ReadHeader(std::istream& stream,
-  std::uint32_t* hash_value, std::string* architecture) {
-  std::uint32_t version, size;
-  stream.read(reinterpret_cast<char*>(&version), sizeof(version));
-  stream.read(reinterpret_cast<char*>(hash_value), sizeof(*hash_value));
-  stream.read(reinterpret_cast<char*>(&size), sizeof(size));
-  if (!stream || version != kVersion) return false;
-  architecture->resize(size);
-  stream.read(&(*architecture)[0], size);
-  return !stream.fail();
-}
-
-// write the header
-bool WriteHeader(std::ostream& stream,
-  std::uint32_t hash_value, const std::string& architecture) {
-  stream.write(reinterpret_cast<const char*>(&kVersion), sizeof(kVersion));
-  stream.write(reinterpret_cast<const char*>(&hash_value), sizeof(hash_value));
-  const std::uint32_t size = static_cast<std::uint32_t>(architecture.size());
-  stream.write(reinterpret_cast<const char*>(&size), sizeof(size));
-  stream.write(architecture.data(), size);
-  return !stream.fail();
-}
-
-// read evaluation function parameters
-bool ReadParameters(std::istream& stream) {
-  std::uint32_t hash_value;
-  std::string architecture;
-  if (!ReadHeader(stream, &hash_value, &architecture)) return false;
-  if (hash_value != kHashValue) return false;
-  if (!Detail::ReadParameters(stream, feature_transformer)) return false;
-  if (!Detail::ReadParameters(stream, network)) return false;
-  return stream && stream.peek() == std::ios::traits_type::eof();
-}
-
-// write evaluation function parameters
-bool WriteParameters(std::ostream& stream) {
-  if (!WriteHeader(stream, kHashValue, GetArchitectureString())) return false;
-  if (!Detail::WriteParameters(stream, feature_transformer)) return false;
-  if (!Detail::WriteParameters(stream, network)) return false;
-  return !stream.fail();
-}
-*/
-
 };
 
 class NNUEReader {
@@ -386,6 +320,16 @@ void save_model_nnue_format(nnue_model, target_fn) {
 
 }
 */
+
+void save_model_nnue_format(NNUEModel &nnue_model, std::string target_fn) {
+/*
+    if not target_fn.endswith('.nnue'):
+        raise Exception('Invalid network output format.')
+    writer = NNUEWriter(nnue_model)
+    with open(target_fn, 'wb') as f:
+        f.write(writer.buf)
+*/
+}
 
 void main_simple() {
 /*
