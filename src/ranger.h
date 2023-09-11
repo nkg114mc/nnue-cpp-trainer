@@ -140,7 +140,10 @@ public:
     //     : Ranger({torch::optim::OptimizerParamGroup(std::move(params))}, defaults) {}
     //  void __setstate__(self, state);
     torch::Tensor step(LossClosure closure = nullptr) override;
+    
+    // for debug
     void show_hypers();
+    void set_state(torch::Tensor &p, RangerParamState &state);
 };
 
 #endif // #define RANGER_H

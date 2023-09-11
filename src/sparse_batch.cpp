@@ -259,7 +259,9 @@ void training_speed_benckmark()
     torch::optim::Adam optimizer(nnue_model->parameters(), optim_option);
 
     int batch_size = 10000;
-    auto stream = create_sparse_batch_stream("HalfKP", 4, "/media/mc/Fastdata/Stockfish-NNUE/trainingdata100m/trn_100m_d10.bin", batch_size, true, false, 0, false);
+    //std::string train_fn = "/media/mc/Fastdata/Stockfish-NNUE/trainingdata100m/trn_100m_d10.bin";
+    std::string train_fn = "/media/mc/Fastdata/Stockfish-NNUE/trainingdata1b/trn_1b_d10.bin";
+    auto stream = create_sparse_batch_stream("HalfKP", 4, train_fn.c_str(), batch_size, true, false, 0, false);
     int64_t total_size = 100 * 1000000;
     int64_t batch_cnt = total_size / batch_size;
 

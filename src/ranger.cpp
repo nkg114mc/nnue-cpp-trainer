@@ -277,7 +277,23 @@ torch::Tensor centralized_gradient(torch::Tensor x, bool use_gc = true, bool gc_
 
 std::tuple<double, double> compute_buffer(int step, int N_sma_threshhold, double beta1, double beta2)
 {
-
+    /*
+                    if state['step'] == buffered[0]:
+                        N_sma, step_size = buffered[1], buffered[2]
+                    else:
+                        buffered[0] = state['step']
+                        beta2_t = beta2 ** state['step']
+                        N_sma_max = 2 / (1 - beta2) - 1
+                        N_sma = N_sma_max - 2 * \
+                            state['step'] * beta2_t / (1 - beta2_t)
+                        buffered[1] = N_sma
+                        if N_sma > self.N_sma_threshhold:
+                            step_size = math.sqrt((1 - beta2_t) * (N_sma - 4) / (N_sma_max - 4) * (
+                                N_sma - 2) / N_sma * N_sma_max / (N_sma_max - 2)) / (1 - beta1 ** state['step'])
+                        else:
+                            step_size = 1.0 / (1 - beta1 ** state['step'])
+                        buffered[2] = step_size
+    */
     double beta2_t = std::pow(beta2, step);
     double N_sma_max = 2 / (1 - beta2) - 1;
     double N_sma = N_sma_max - 2 * step * beta2_t / (1 - beta2_t);
@@ -308,112 +324,6 @@ std::tuple<double, double> compute_buffer(int step, int N_sma_threshhold, double
 
 torch::Tensor Ranger::step(LossClosure closure)
 {
-    /*
-            loss = None
-            if closure is not None:
-                with torch.enable_grad():
-                    loss = closure()
-
-            // Evaluate averages and grad, update param tensors
-            for group in self.param_groups:
-
-                for p in group['params']:
-                    if p.grad is None:
-                        continue
-                    grad = p.grad.data.float()
-
-                    if grad.is_sparse:
-                        raise RuntimeError(
-                            'Ranger optimizer does not support sparse gradients')
-
-                    p_data_fp32 = p.data.float()
-
-                    state = self.state[p]  # get state dict for this param
-
-                    if len(state) == 0:  # if first time to run...init dictionary with our desired entries
-                        # if self.first_run_check==0:
-                        # self.first_run_check=1
-                        #print("Initializing slow buffer...should not see this at load from saved model!")
-                        state['step'] = 0
-                        state['exp_avg'] = torch.zeros_like(p_data_fp32)
-                        state['exp_avg_sq'] = torch.zeros_like(p_data_fp32)
-
-                        # look ahead weight storage now in state dict
-                        state['slow_buffer'] = torch.empty_like(p.data)
-                        state['slow_buffer'].copy_(p.data)
-
-                    else:
-                        state['exp_avg'] = state['exp_avg'].type_as(p_data_fp32)
-                        state['exp_avg_sq'] = state['exp_avg_sq'].type_as(
-                            p_data_fp32)
-
-                    # begin computations
-                    exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
-                    beta1, beta2 = group['betas']
-
-                    # GC operation for Conv layers and FC layers
-                    # if grad.dim() > self.gc_gradient_threshold:
-                    #    grad.add_(-grad.mean(dim=tuple(range(1, grad.dim())), keepdim=True))
-                    if self.gc_loc:
-                        grad = centralized_gradient(grad, use_gc=self.use_gc, gc_conv_only=self.gc_conv_only, dim=group['gc_dim'])
-
-                    state['step'] += 1
-
-                    # compute variance mov avg
-                    exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
-
-                    # compute mean moving avg
-                    exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
-
-                    buffered = self.radam_buffer[int(state['step'] % 10)]
-
-                    if state['step'] == buffered[0]:
-                        N_sma, step_size = buffered[1], buffered[2]
-                    else:
-                        buffered[0] = state['step']
-                        beta2_t = beta2 ** state['step']
-                        N_sma_max = 2 / (1 - beta2) - 1
-                        N_sma = N_sma_max - 2 * \
-                            state['step'] * beta2_t / (1 - beta2_t)
-                        buffered[1] = N_sma
-                        if N_sma > self.N_sma_threshhold:
-                            step_size = math.sqrt((1 - beta2_t) * (N_sma - 4) / (N_sma_max - 4) * (
-                                N_sma - 2) / N_sma * N_sma_max / (N_sma_max - 2)) / (1 - beta1 ** state['step'])
-                        else:
-                            step_size = 1.0 / (1 - beta1 ** state['step'])
-                        buffered[2] = step_size
-
-                    # if group['weight_decay'] != 0:
-                    #    p_data_fp32.add_(-group['weight_decay']
-                    #                     * group['lr'], p_data_fp32)
-
-                    // apply lr
-                    if N_sma > self.N_sma_threshhold:
-                        denom = exp_avg_sq.sqrt().add_(group['eps'])
-                        G_grad = exp_avg / denom
-                    else:
-                        G_grad = exp_avg
-
-                    if group['weight_decay'] != 0:
-                        G_grad.add_(p_data_fp32, alpha=group['weight_decay'])
-                    # GC operation
-                    if self.gc_loc == False:
-                        G_grad = centralized_gradient(G_grad, use_gc=self.use_gc, gc_conv_only=self.gc_conv_only, dim=group['gc_dim'])
-
-                    p_data_fp32.add_(G_grad, alpha=-step_size * group['lr'])
-
-                    p.data.copy_(p_data_fp32)
-
-                    # integrated look ahead...
-                    # we do it at the param level instead of group level
-                    if state['step'] % group['k'] == 0:
-                        # get access to slow param tensor
-                        slow_p = state['slow_buffer']
-                        # (fast weights - slow weights) * alpha
-                        slow_p.add_(p.data - slow_p, alpha=self.alpha)
-                        # copy interpolated weights to RAdam param tensor
-                        p.data.copy_(slow_p)
-    */
     torch::NoGradGuard no_grad;
     torch::Tensor loss = {};
     if (closure != nullptr)
@@ -440,7 +350,7 @@ torch::Tensor Ranger::step(LossClosure closure)
             auto param_state = state_.find(c10::guts::to_string(p.unsafeGetTensorImpl()));
             auto &options = static_cast<RangerOptions &>(group.options());
 
-            //std::cout << "Group[" << &p << "]: " << options.lr() << " " << options.gc_dim() << std::endl;
+            // std::cout << "Group[" << &p << "]: " << options.lr() << " " << options.gc_dim() << std::endl;
 
             // State initialization
             if (param_state == state_.end())
@@ -461,10 +371,10 @@ torch::Tensor Ranger::step(LossClosure closure)
 
                 state_[c10::guts::to_string(p.unsafeGetTensorImpl())] = std::move(state);
             }
-            //else
+            // else
             //{
-                // state['exp_avg'] = state['exp_avg'].type_as(p_data_fp32);
-                // state['exp_avg_sq'] = state['exp_avg_sq'].type_as(p_data_fp32);
+            //  state['exp_avg'] = state['exp_avg'].type_as(p_data_fp32);
+            //  state['exp_avg_sq'] = state['exp_avg_sq'].type_as(p_data_fp32);
             //}
 
             // begin computations
@@ -502,42 +412,25 @@ torch::Tensor Ranger::step(LossClosure closure)
             // compute mean moving avg
             exp_avg.mul_(beta1).add_(grad, 1 - beta1);
 
-            /*
-                            if state['step'] == buffered[0]:
-                                N_sma, step_size = buffered[1], buffered[2]
-                            else:
-                                buffered[0] = state['step']
-                                beta2_t = beta2 ** state['step']
-                                N_sma_max = 2 / (1 - beta2) - 1
-                                N_sma = N_sma_max - 2 * \
-                                    state['step'] * beta2_t / (1 - beta2_t)
-                                buffered[1] = N_sma
-                                if N_sma > self.N_sma_threshhold:
-                                    step_size = math.sqrt((1 - beta2_t) * (N_sma - 4) / (N_sma_max - 4) * (
-                                        N_sma - 2) / N_sma * N_sma_max / (N_sma_max - 2)) / (1 - beta1 ** state['step'])
-                                else:
-                                    step_size = 1.0 / (1 - beta1 ** state['step'])
-                                buffered[2] = step_size
-            */
             auto computed_buffered = compute_buffer(state.step(), hyperparams.N_sma_threshhold(), beta1, beta2);
             int N_sma = std::get<0>(computed_buffered);
             double step_size = std::get<1>(computed_buffered);
 
-            // if group['weight_decay'] != 0:
-            //    p_data_fp32.add_(-group['weight_decay']
-            //                     * group['lr'], p_data_fp32)
+            // # if group['weight_decay'] != 0:
+            // #   p_data_fp32.add_(-group['weight_decay']
+            // #                    * group['lr'], p_data_fp32)
 
             // apply lr
-            auto G_grad = exp_avg;
+            torch::Tensor G_grad;
             if (N_sma > hyperparams.N_sma_threshhold())
             {
                 auto denom = exp_avg_sq.sqrt().add_(options.eps());
                 G_grad = exp_avg / denom;
             }
-            // else
-            //{
-            //     G_grad = exp_avg;
-            // }
+            else
+            {
+                G_grad = exp_avg;
+            }
 
             // if group['weight_decay'] != 0:
             //     G_grad.add_(p_data_fp32, alpha=group['weight_decay'])
@@ -552,6 +445,8 @@ torch::Tensor Ranger::step(LossClosure closure)
             {
                 G_grad = centralized_gradient(G_grad, hyperparams.use_gc(), hyperparams.gc_conv_only(), options.gc_dim());
             }
+
+            //std::cout << "G_grad = " << G_grad << std::endl;
             p_data_fp32.add_(G_grad, -step_size * options.lr());
 
             p.copy_(p_data_fp32);
@@ -567,34 +462,6 @@ torch::Tensor Ranger::step(LossClosure closure)
                 // copy interpolated weights to RAdam param tensor
                 p.copy_(slow_p);
             }
-
-            /*
-                  auto bias_correction1 = 1 - std::pow(beta1, state.step());
-                  auto bias_correction2 = 1 - std::pow(beta2, state.step());
-
-                  if (options.weight_decay() != 0) {
-                    grad = grad.add(p, options.weight_decay());
-                  }
-
-                  // Decay the first and second moment running average coefficient
-                  exp_avg.mul_(beta1).add_(grad, 1 - beta1);
-                  exp_avg_sq.mul_(beta2).addcmul_(grad, grad, 1 - beta2);
-
-                  Tensor denom;
-                  if (options.amsgrad()) {
-                    // Maintains the maximum of all 2nd moment running avg. till now
-                    torch::max_out(max_exp_avg_sq, exp_avg_sq, max_exp_avg_sq);
-                    // Use the max. for normalizing running avg. of gradient
-                    denom = (max_exp_avg_sq.sqrt() / sqrt(bias_correction2))
-                                .add_(options.eps());
-                  } else {
-                    denom =
-                        (exp_avg_sq.sqrt() / sqrt(bias_correction2)).add_(options.eps());
-                  }
-
-                  auto step_size = options.lr() / bias_correction1;
-                  p.addcdiv_(exp_avg, denom, -step_size);
-            */
         }
     }
     return loss;
@@ -608,13 +475,20 @@ void Ranger::show_hypers()
     std::cout << hyperparams.weight_decay() << std::endl;
 }
 
+void Ranger::set_state(torch::Tensor &p, RangerParamState &state)
+{
+    auto x_state = std::make_unique<RangerParamState>(state);
+    state_[c10::guts::to_string(p.unsafeGetTensorImpl())] = std::move(x_state);
+}
+
 //// RangerOptions
 
 RangerOptions::RangerOptions(double lr) : lr_(lr) {}
 
 #define copy_prop(name, src) name(src.name())
 
-RangerOptions::RangerOptions(const RangerOptions &other) {
+RangerOptions::RangerOptions(const RangerOptions &other)
+{
     copy_prop(lr, other);
     copy_prop(alpha, other);
     copy_prop(k, other);
@@ -632,12 +506,19 @@ RangerOptions::RangerOptions(const RangerOptions &other) {
 
 bool operator==(const RangerOptions &lhs, const RangerOptions &rhs)
 {
+    std::cout << "Option equal operator is called!!!!!!!!!!!!!!!!" << std::endl;
     return (lhs.lr() == rhs.lr()) &&
            (std::get<0>(lhs.betas()) == std::get<0>(rhs.betas())) &&
            (std::get<1>(lhs.betas()) == std::get<1>(rhs.betas())) &&
            (lhs.eps() == rhs.eps()) &&
-           (lhs.weight_decay() == rhs.weight_decay()); //&&
-                                                       // (lhs.amsgrad() == rhs.amsgrad()));
+           (lhs.weight_decay() == rhs.weight_decay()) &&
+           (lhs.alpha() == rhs.alpha()) &&
+           (lhs.k() == rhs.k()) &&
+           (lhs.N_sma_threshhold() == rhs.N_sma_threshhold()) &&
+           (lhs.use_gc() == rhs.use_gc()) &&
+           (lhs.gc_conv_only() == rhs.gc_conv_only()) &&
+           (lhs.gc_loc() == rhs.gc_loc()) &&
+           (lhs.gc_dim() == rhs.gc_dim());
 }
 
 void RangerOptions::serialize(torch::serialize::OutputArchive &archive) const
@@ -688,12 +569,11 @@ void RangerOptions::set_lr(const double lr)
 
 bool operator==(const RangerParamState &lhs, const RangerParamState &rhs)
 {
-    /*
-      return (lhs.step() == rhs.step()) &&
-          torch::equal(lhs.exp_avg(), rhs.exp_avg()) &&
-          torch::equal(lhs.exp_avg_sq(), rhs.exp_avg_sq()) &&
-          torch::equal_if_defined(lhs.max_exp_avg_sq(), rhs.max_exp_avg_sq());
-    */
+    std::cout << "State equal operator is called!!!!!!!!!!!!!!!!" << std::endl;
+    return (lhs.step() == rhs.step()) &&
+           torch::equal(lhs.exp_avg(), rhs.exp_avg()) &&
+           torch::equal(lhs.exp_avg_sq(), rhs.exp_avg_sq()) &&
+           torch::equal_if_defined(lhs.slow_buffer(), rhs.slow_buffer());
 }
 
 void RangerParamState::serialize(torch::serialize::OutputArchive &archive) const
@@ -706,35 +586,52 @@ void RangerParamState::serialize(torch::serialize::InputArchive &archive)
     _TORCH_OPTIM_DESERIALIZE_TORCH_ARG(int64_t, step);
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-torch::Tensor load_txt_tensor(std::ifstream& inf) {
-
+torch::Tensor load_txt_tensor(std::ifstream &inf)
+{
     int n_dim = 0;
     inf >> n_dim;
 
     std::vector<int64_t> sizes_vec;
     int64_t total = 1;
-    for (int i = 0; i < n_dim; i++) {
+    for (int i = 0; i < n_dim; i++)
+    {
         int64_t dim_size = 0;
         inf >> dim_size;
         sizes_vec.push_back(dim_size);
         total *= dim_size;
     }
     std::cout << "n_dim = " << n_dim << std::endl;
+    std::cout << "(";
+    for (int j = 0; j < sizes_vec.size(); j++) {
+        if (j > 0) {
+            std::cout << " ";
+        }
+        std::cout << sizes_vec[j];
+    }
+    std::cout << ")\n";
 
-    float* tensor_value = new float[total];
-    for (int i = 0; i < total; i++) {
+    float *tensor_value = new float[total];
+    for (int i = 0; i < total; i++)
+    {
         float value;
         inf >> value;
-        //std::cout << value << " " << sizeof(double) << std::endl;
+        // std::cout << value << " " << sizeof(double) << std::endl;
         tensor_value[i] = value;
     }
     auto float_options = torch::TensorOptions().dtype(torch::kFloat32);
     auto result = torch::from_blob(tensor_value, sizes_vec, float_options);
     return result;
+}
+
+int load_txt_int(std::ifstream &inf)
+{
+    int value = 0;
+    inf >> value;
+    std::cout << "Read int: " << value << std::endl;
+    return value;
 }
 
 void test_create_ranger_optimizer()
@@ -750,13 +647,14 @@ void test_centralized_gradient()
     std::ifstream inf;
     inf.open("/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/gc_tests.txt");
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 3; i++)
+    {
         torch::Tensor x = load_txt_tensor(inf);
         torch::Tensor y = load_txt_tensor(inf);
         torch::Tensor yhat = centralized_gradient(x, true, false, 0);
 
         std::cout << "Case " << i << ":" << std::endl;
-        std::cout << y << std::endl; 
+        std::cout << y << std::endl;
         std::cout << yhat << std::endl;
         std::cout << "difference norm = " << torch::norm(y - yhat) << std::endl;
     }
@@ -781,13 +679,26 @@ void test_compute_buffer()
     inf.close();
 }
 
-void test_step_single_param_(torch::Tensor x, torch::Tensor grad, torch::Tensor x_expected, RangerOptions option, RangerOptions default_option) {
+void test_step_single_param_(torch::Tensor x, torch::Tensor grad,
+                             int state_step, torch::Tensor state_exp_avg, torch::Tensor state_exp_avg_sq, torch::Tensor state_slow_buf,
+                             torch::Tensor x_expected,
+                             RangerOptions option, RangerOptions default_option)
+{
 
     x.mutable_grad() = grad;
     auto grp = torch::optim::OptimizerParamGroup({x});
     grp.set_options(std::make_unique<RangerOptions>(option));
     Ranger optimizer({grp}, default_option);
-    
+
+    // set state
+    RangerParamState x_state;
+    x_state.step(state_step);
+    x_state.exp_avg(state_exp_avg);
+    x_state.exp_avg_sq(state_exp_avg_sq);
+    x_state.slow_buffer(state_slow_buf);
+    optimizer.set_state(x, x_state);
+
+    // run step
     optimizer.step();
 
     std::cout << "grad norm = " << torch::norm(grad) << std::endl;
@@ -799,26 +710,44 @@ void test_step_single_param_(torch::Tensor x, torch::Tensor grad, torch::Tensor 
 void test_ranger_step()
 {
     std::ifstream inf;
-    inf.open("/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/step_test.txt");
+    inf.open("/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/step_test_1.txt");
 
     auto ranger_option = RangerOptions().betas({0.9, 0.999}).eps(1.0e-7);
-    for (int group_id = 0; group_id < 8; group_id++) {
-        std::cout << "========================> Group " << group_id << std::endl;
 
-        torch::Tensor x = load_txt_tensor(inf);
-        torch::Tensor x_grad = load_txt_tensor(inf);
-        torch::Tensor x_expected = load_txt_tensor(inf);
+    for (int sample_id = 0; sample_id < 3; sample_id++) {
+        std::cout << "------------------------> Sample " << sample_id << std::endl;
 
-        RangerOptions group_option(ranger_option);
-        const double LR = 1e-3;
-        if (group_id < 2) { // input
-            group_option.lr(LR).gc_dim(0);
-        } else if (group_id > 6) { // output
-            group_option.lr(LR / 10.0);
-        } else {
-            group_option.lr(LR);
+        for (int group_id = 0; group_id < 8; group_id++)
+        {
+            std::cout << "========================> Group " << group_id << std::endl;
+
+            // input
+            torch::Tensor x = load_txt_tensor(inf);
+            torch::Tensor x_grad = load_txt_tensor(inf);
+
+            // state
+            int state_step = load_txt_int(inf);
+            torch::Tensor state_exp_avg = load_txt_tensor(inf);
+            torch::Tensor state_exp_avg_sq = load_txt_tensor(inf);
+            torch::Tensor state_slow_buf = load_txt_tensor(inf);
+
+            // expected
+            torch::Tensor x_expected = load_txt_tensor(inf);
+
+            RangerOptions group_option(ranger_option);
+            const double LR = 1e-3;
+            if (group_id < 2) { // input
+                group_option.lr(LR).gc_dim(0);
+            } else if (group_id >= 6) { // output
+                group_option.lr(LR / 10.0);
+            } else {
+                group_option.lr(LR);
+            }
+
+            test_step_single_param_(x, x_grad,
+                                    state_step, state_exp_avg, state_exp_avg_sq, state_slow_buf,
+                                    x_expected, group_option, ranger_option);
         }
-
-        test_step_single_param_(x, x_grad, x_expected, group_option, ranger_option);
     }
+
 }
