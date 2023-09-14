@@ -228,8 +228,8 @@ private:
         return tensor;
     }
 
-    //void read_feature_transformer(FeatureTransformerSliceEmulate &layer) {
-    void read_feature_transformer(FeatTransSlow &layer) {
+    void read_feature_transformer(FeatureTransformerSliceEmulate &layer) {
+    //void read_feature_transformer(FeatTransSlow &layer) {
         layer->bias = read_tensor(torch::kInt16, layer->bias.sizes()).divide(127.0);
         // weights stored as [41024][256]
         auto weights_int = read_tensor(torch::kInt16, layer->weight.sizes());

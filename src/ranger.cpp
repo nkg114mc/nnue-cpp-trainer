@@ -320,8 +320,6 @@ std::tuple<double, double> compute_buffer(int step, int N_sma_threshhold, double
     return {N_sma, step_size};
 }
 
-// void __setstate__(self, state);
-
 torch::Tensor Ranger::step(LossClosure closure)
 {
     torch::NoGradGuard no_grad;
@@ -471,8 +469,15 @@ void Ranger::show_hypers()
 {
     std::cout << hyperparams.lr() << std::endl;
     std::cout << hyperparams.alpha() << std::endl;
+    std::cout << hyperparams.k() << std::endl;
+    std::cout << hyperparams.N_sma_threshhold() << std::endl;
+    std::cout << hyperparams.betas() << std::endl;
     std::cout << hyperparams.eps() << std::endl;
     std::cout << hyperparams.weight_decay() << std::endl;
+    std::cout << hyperparams.use_gc() << std::endl;
+    std::cout << hyperparams.gc_conv_only() << std::endl;
+    std::cout << hyperparams.gc_loc() << std::endl;
+    std::cout << hyperparams.gc_dim() << std::endl;
 }
 
 void Ranger::set_state(torch::Tensor &p, RangerParamState &state)

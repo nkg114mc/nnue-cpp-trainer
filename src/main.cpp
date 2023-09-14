@@ -7,6 +7,9 @@ void test_read_batch_stream();
 void train_nnue_model();
 void training_speed_benckmark();
 //void test_feature_transformer_backward();
+void test_model_forward_and_loss();
+void test_model_backward();
+
 
 int main()
 {
@@ -25,11 +28,14 @@ int main()
     // test_construct_feature_transformer();
     //test_read_batch_stream();
 
-    //train_nnue_model();
+    train_nnue_model();
     //training_speed_benckmark();
 
     //test_create_ranger_optimizer();
     //test_centralized_gradient();
     //test_compute_buffer();
-    test_ranger_step();
+    //test_ranger_step();
+
+    //test_model_forward_and_loss();
+    //test_model_backward();
 }

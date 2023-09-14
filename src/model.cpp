@@ -1,6 +1,8 @@
 #include <torch/torch.h>
 #include <iostream>
+#include <fstream>
 #include <memory>
+#include <string>
 
 #include "model.h"
 
@@ -16,14 +18,58 @@ NNUEModelImpl::NNUEModelImpl(FeatureSetPy *feature_set_ptr)
     this->feature_set = feature_set_ptr;
 
     // this->input = register_module<FeatureTransformerSliceEmulate>("input", std::make_shared<FeatureTransformerSliceEmulate>(INPUT_DIM, L1));
-    //this->input = FeatureTransformerSliceEmulate(INPUT_DIM, L1);
-    this->input = FeatTransSlow(INPUT_DIM, L1);
+    this->input = FeatureTransformerSliceEmulate(INPUT_DIM, L1);
+    //this->input = FeatTransSlow(INPUT_DIM, L1);
     register_module("input", this->input);
     this->l1 = register_module("l1", torch::nn::Linear(2 * L1, L2));
     this->l2 = register_module("l2", torch::nn::Linear(L2, L3));
     this->output = register_module("output", torch::nn::Linear(L3, 1));
 
     this->description = "No description set?";
+
+    zero_virtual_feature_weights();
+}
+
+
+torch::Tensor load_txt_tensor(std::ifstream &inf);
+
+NNUEModelImpl::NNUEModelImpl(std::string fn)
+{
+    this->input = FeatureTransformerSliceEmulate(INPUT_DIM, L1);
+    //this->input = FeatTransSlow(INPUT_DIM, L1);
+    this->l1 = torch::nn::Linear(2 * L1, L2);
+    this->l2 = torch::nn::Linear(L2, L3);
+    this->output = torch::nn::Linear(L3, 1);
+
+    std::ifstream inf;
+    inf.open(fn);
+
+    this->input->weight = register_parameter("weight2", load_txt_tensor(inf), false);
+    this->input->bias = register_parameter("bias2", load_txt_tensor(inf), false);
+    this->l1->weight = register_parameter("weight3", load_txt_tensor(inf), false);
+    this->l1->bias = register_parameter("bias3", load_txt_tensor(inf), false);
+    this->l2->weight = register_parameter("weight4", load_txt_tensor(inf), false);
+    this->l2->bias = register_parameter("bias4", load_txt_tensor(inf), false);
+    this->output->weight = register_parameter("weight5", load_txt_tensor(inf), false);
+    this->output->bias = register_parameter("bias5", load_txt_tensor(inf), false);
+
+    this->input->weight.requires_grad_();
+    this->input->bias.requires_grad_();
+    this->l1->weight.requires_grad_();
+    this->l1->bias.requires_grad_();
+    this->l2->weight.requires_grad_();
+    this->l2->bias.requires_grad_();
+    this->output->weight.requires_grad_();
+    this->output->bias.requires_grad_();
+    
+    inf.close();
+
+    register_module("input", this->input);
+    register_module("l1", this->l1);
+    register_module("l2", this->l2);
+    register_module("output", this->output);
+
+    this->description = "Debug model (parameter initialized)";
 
     zero_virtual_feature_weights();
 }

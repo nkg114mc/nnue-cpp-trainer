@@ -204,13 +204,13 @@ FeatTransSlowImpl::FeatTransSlowImpl(int n_inputs, int n_outputs)
     this->num_outputs = n_outputs;
 
     float sigma = std::sqrt(1.0 / (float)(num_inputs));
-    auto init_weight = torch::rand({num_inputs, num_outputs}, torch::kF32) * (2 * sigma) - sigma;
-    auto init_bias = torch::rand({num_outputs}, torch::kF32) * (2 * sigma) - sigma;
+    auto init_weight = torch::rand({num_inputs, num_outputs}, torch::kFloat32) * (2 * sigma) - sigma;
+    auto init_bias = torch::rand({num_outputs}, torch::kFloat32) * (2 * sigma) - sigma;
     this->weight = register_parameter("weight", init_weight, false);
     this->bias = register_parameter("bias", init_bias, false);
 
-    weight.requires_grad_();
-    bias.requires_grad_();
+    this->weight.requires_grad_();
+    this->bias.requires_grad_();
 }
 
 torch::autograd::tensor_list FeatTransSlowImpl::forward(torch::Tensor feature_indices_0,
@@ -256,13 +256,13 @@ FeatureTransformerSliceEmulateImpl::FeatureTransformerSliceEmulateImpl(int n_inp
     this->num_outputs = n_outputs;
 
     float sigma = std::sqrt(1.0 / (float)(num_inputs));
-    auto init_weight = torch::rand({num_inputs, num_outputs}, torch::kF32) * (2 * sigma) - sigma;
-    auto init_bias = torch::rand({num_outputs}, torch::kF32) * (2 * sigma) - sigma;
+    auto init_weight = torch::rand({num_inputs, num_outputs}, torch::kFloat32) * (2 * sigma) - sigma;
+    auto init_bias = torch::rand({num_outputs}, torch::kFloat32) * (2 * sigma) - sigma;
     this->weight = register_parameter("weight", init_weight, false);
     this->bias = register_parameter("bias", init_bias, false);
 
-    weight.requires_grad_();
-    bias.requires_grad_();
+    this->weight.requires_grad_();
+    this->bias.requires_grad_();
 }
 
 torch::autograd::tensor_list FeatureTransformerSliceEmulateImpl::forward(torch::Tensor feature_indices_0,

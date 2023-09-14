@@ -156,6 +156,7 @@ public:
                  use_gc=True, gc_conv_only=False, gc_loc=True) {
 */
 
+torch::Tensor load_txt_tensor(std::ifstream &inf);
 void test_create_ranger_optimizer();
 void test_centralized_gradient();
 void test_compute_buffer();

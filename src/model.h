@@ -19,15 +19,17 @@ public:
     FeatureSetPy *feature_set;
 
     // DoubleFeatureTransformerSlice *input;
-    //FeatureTransformerSliceEmulate input = nullptr;
-    FeatTransSlow input = nullptr;
+    FeatureTransformerSliceEmulate input = nullptr;
+    //FeatTransSlow input = nullptr;
     torch::nn::Linear l1 = nullptr;
     torch::nn::Linear l2 = nullptr;
     torch::nn::Linear output = nullptr;
+    torch::nn::Linear dummy = nullptr;
 
     std::string description;
 
     NNUEModelImpl(FeatureSetPy *feature_set_ptr);
+    NNUEModelImpl(std::string fn);
     ~NNUEModelImpl();
     torch::Tensor forward(torch::Tensor us,
                           torch::Tensor them,
