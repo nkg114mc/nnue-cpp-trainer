@@ -471,7 +471,7 @@ void Ranger::show_hypers()
     std::cout << hyperparams.alpha() << std::endl;
     std::cout << hyperparams.k() << std::endl;
     std::cout << hyperparams.N_sma_threshhold() << std::endl;
-    std::cout << hyperparams.betas() << std::endl;
+    std::cout << "(" << std::get<0>(hyperparams.betas()) << "," << std::get<1>(hyperparams.betas()) << ")" << std::endl;
     std::cout << hyperparams.eps() << std::endl;
     std::cout << hyperparams.weight_decay() << std::endl;
     std::cout << hyperparams.use_gc() << std::endl;

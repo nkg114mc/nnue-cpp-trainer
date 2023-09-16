@@ -47,38 +47,40 @@ public:
         return 0;
     }
 
-    NNUEWriter(NNUEModel &model, std::string fn, std::string description) {
+    NNUEWriter(NNUEModel &model, std::string fn) {
 
+    }
+
+    ~NNUEWriter() {
+        
     }
 
     void write_model() {
-        /*
-        self.buf = bytearray()
-
-        fc_hash = self.fc_hash(model)
-        self.write_header(model, fc_hash)
-        self.int32(model.feature_set.hash ^ (M.L1 * 2))  // Feature transformer hash
-        self.write_feature_transformer(model)
-        self.int32(fc_hash)  // FC layers hash
-        self.write_fc_layer(model.l1, false);
-        self.write_fc_layer(model.l2, false);
-        self.write_fc_layer(model.output, true);
-        */
+        uint32_t fc_hash_value = fc_hash(model);
+        write_header(model, fc_hash_value);
+        //self.int32(model.feature_set.hash ^ (M.L1 * 2))  // Feature transformer hash
+        //self.write_feature_transformer(model)
+        write_int32(fc_hash_value);  // FC layers hash
+        //self.write_fc_layer(model.l1, false);
+        //self.write_fc_layer(model.l2, false);
+        //self.write_fc_layer(model.output, true);
     }
 
 private:
+    std::ofstream outf;
+    NNUEModel model{nullptr};
 
-    void write_header(NNUEModel &model, uint32_t fc_hash) {
+    void write_header(NNUEModel &model, uint32_t fc_hash_value) {
         /*
-        self.int32(VERSION)  # version
-        self.int32(fc_hash ^ model.feature_set.hash ^ (M.L1 * 2))  # halfkp network hash
-        # description = b"Features=HalfKP(Friend)[41024->256x2],"
-        # description += b"Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-32]"
-        # description += b"(ClippedReLU[32](AffineTransform[32<-512](InputSlice[512(0:512)])))))"
-        description = model.description.encode('utf-8')
-        self.int32(len(description))  # Network definition
-        self.buf.extend(description)
-        print("description:", model.description)*/
+        write_int32(VERSION)  // version
+        write_int32(fc_hash_value ^ model.feature_set.hash ^ (M.L1 * 2))  // halfkp network hash
+        //# description = b"Features=HalfKP(Friend)[41024->256x2],"
+        //# description += b"Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-32]"
+        //# description += b"(ClippedReLU[32](AffineTransform[32<-512](InputSlice[512(0:512)])))))"
+        //description = model.description.encode('utf-8')
+        // Network definition
+        write_int32(len(description))  
+        std::cout << "description:", model.description)*/
     }
 /*
     void coalesce_ft_weights(NNUEModel &model, layer) {
@@ -87,26 +89,26 @@ private:
         weight_coalesced = weight.new_zeros((model.feature_set.num_real_features, weight.shape[1]))
         for i_real, is_virtual in enumerate(indices):
             weight_coalesced[i_real, :] = sum(weight[i_virtual, :] for i_virtual in is_virtual)
-
         return weight_coalesced
     }
 
     void write_feature_transformer(NNUEModel &model) {
-        # int16 bias = round(x * 127)
-        # int16 weight = round(x * 127)
-        layer = model.input
+        // int16 bias = round(x * 127)
+        // int16 weight = round(x * 127)
+        layer = model->input;
         bias = layer.bias.data
-        bias = bias.mul(127).round().to(torch.int16)
-        ascii_hist('ft bias:', bias.numpy())
+        bias = bias.mul(127).round().to(torch::kInt16);
+        // ascii_hist('ft bias:', bias.numpy())
         self.buf.extend(bias.flatten().numpy().tobytes())
 
         weight = self.coalesce_ft_weights(model, layer)
         weight = weight.mul(127).round().to(torch.int16)
         ascii_hist('ft weight:', weight.numpy())
-        # weights stored as [41024][256]
+        // weights stored as [41024][256]
         self.buf.extend(weight.flatten().numpy().tobytes())
     }
-
+*/
+/*
     void write_fc_layer( layer, bool is_output) {
         # FC layers are stored as int8 weights, and int32 biases
         kWeightScaleBits = 6
@@ -142,11 +144,11 @@ private:
         # Stored as [outputs][inputs], so we can flatten
         self.buf.extend(weight.flatten().numpy().tobytes())
     }
-
-    void int32(self, v) {
-        self.buf.extend(struct.pack("<I", v))
-    }
 */
+    void write_int32(uint32_t v) {
+        outf.write(reinterpret_cast<char*>(&v), sizeof(v));
+    }
+
 };
 
 class NNUEReader {
@@ -325,7 +327,7 @@ void save_model_nnue_format(NNUEModel &nnue_model, std::string target_fn) {
 /*
     if not target_fn.endswith('.nnue'):
         raise Exception('Invalid network output format.')
-    writer = NNUEWriter(nnue_model)
+    writer = NNUEWriter(nnue_model);
     with open(target_fn, 'wb') as f:
         f.write(writer.buf)
 */

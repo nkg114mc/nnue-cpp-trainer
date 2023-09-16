@@ -38,7 +38,7 @@ public:
                           torch::Tensor black_indices,
                           torch::Tensor black_values);
 
-    torch::Tensor compute_loss(SparseBatchTensors batch_tensors,
+    torch::Tensor compute_loss(SparseBatchTensors &batch_tensors,
                                int batch_idx,
                                std::string loss_type); // compute loss
     void get_optimizer();                              // return optimizer pointer; create if not exist

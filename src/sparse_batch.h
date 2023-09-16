@@ -11,6 +11,7 @@ struct SparseBatchTensors {
 public:
 
     SparseBatchTensors(SparseBatch *batch);
+    SparseBatchTensors(SparseBatch *batch, torch::Device *device);
     void get_tensors();
 
     torch::Tensor white_values;
@@ -25,6 +26,7 @@ public:
 private:
 
     SparseBatch *batch_ptr;
+    torch::Device *device_ptr;
 };
 
 #endif // #define SPARSE_BATCH_H

@@ -1,3 +1,4 @@
+#include <torch/cuda.h>
 #include <torch/script.h>
 #include <iostream>
 
@@ -9,11 +10,14 @@ void training_speed_benckmark();
 //void test_feature_transformer_backward();
 void test_model_forward_and_loss();
 void test_model_backward();
+void test_model_params_init();
 
 
 int main()
 {
-    //torch::Device device(torch::kCUDA);
+    if (torch::cuda::is_available()) {
+        std::cout << "CUDA is available! Training on GPU." << std::endl;
+    }
 
     torch::Tensor tensor = torch::eye(3);
     //tensor.to(device);
@@ -38,4 +42,5 @@ int main()
 
     //test_model_forward_and_loss();
     //test_model_backward();
+    //test_model_params_init();
 }

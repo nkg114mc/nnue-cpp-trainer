@@ -1,1 +1,1 @@
-cmake -DCMAKE_PREFIX_PATH=/home/mc/workplace/pytorch-cpp/libtorch ..
+cmake -DCMAKE_PREFIX_PATH=/home/mc/workplace/pytorch-cpp/libtorch-cuda118 ..

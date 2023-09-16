@@ -124,7 +124,7 @@ void NNUEModelImpl::zero_virtual_feature_weights()
 */
 
 // compute loss
-torch::Tensor NNUEModelImpl::compute_loss(SparseBatchTensors batch_tensors,
+torch::Tensor NNUEModelImpl::compute_loss(SparseBatchTensors &batch_tensors,
                                           int batch_idx,
                                           std::string loss_type)
 {

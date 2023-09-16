@@ -229,10 +229,12 @@ torch::Tensor FeatureTransformerSliceFunctionEmulate(torch::Tensor feature_indic
                                                      torch::Tensor weight,
                                                      torch::Tensor bias)
 {
+    torch::Device device = feature_indices.device();
     int batch_size = feature_indices.size(0);
     int num_inputs = weight.size(0);
     int max_active_features = feature_indices.size(1);
-    auto inputs = torch::zeros({batch_size, num_inputs}, torch::kF32);
+    auto input_options = torch::TensorOptions().dtype(torch::kFloat32).device(device);
+    auto inputs = torch::zeros({batch_size, num_inputs}, input_options);
 
     for (int i = 0; i < batch_size; i++)
     {
