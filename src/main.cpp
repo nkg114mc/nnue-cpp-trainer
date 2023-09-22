@@ -11,6 +11,7 @@ void training_speed_benckmark();
 void test_model_forward_and_loss();
 void test_model_backward();
 void test_model_params_init();
+void test_featrans_kernel();
 
 
 int main()
@@ -34,6 +35,7 @@ int main()
 
     train_nnue_model();
     //training_speed_benckmark();
+    //test_featrans_kernel();
 
     //test_create_ranger_optimizer();
     //test_centralized_gradient();

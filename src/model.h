@@ -12,19 +12,20 @@
 extern const int L1;
 extern const int L2;
 extern const int L3;
+extern const int INPUT_DIM;
 
 struct NNUEModelImpl : torch::nn::Module
 {
 public:
     FeatureSetPy *feature_set;
 
-    // DoubleFeatureTransformerSlice *input;
-    FeatureTransformerSliceEmulate input = nullptr;
+    DoubleFeatureTransformerSlice input = nullptr;
+    //FeatureTransformerSliceEmulate input = nullptr;
     //FeatTransSlow input = nullptr;
     torch::nn::Linear l1 = nullptr;
     torch::nn::Linear l2 = nullptr;
     torch::nn::Linear output = nullptr;
-    torch::nn::Linear dummy = nullptr;
+    //torch::nn::Linear dummy = nullptr;
 
     std::string description;
 

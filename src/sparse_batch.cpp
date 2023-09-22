@@ -33,11 +33,17 @@ class SparseBatch(ctypes.Structure):
 #include "model.h"
 #include "serialize.h"
 #include "ranger.h"
+#include "my_logger.h"
+
+#include "featrans_kernel.cuh"
 
 SparseBatchTensors::SparseBatchTensors(SparseBatch *batch)
 {
     this->batch_ptr = batch;
     this->device_ptr = nullptr;
+    if (device_ptr == nullptr) {
+        std::cout << "Warning: device pointer is nullptr." << std::endl;
+    }
     get_tensors();
 }
 
@@ -253,9 +259,12 @@ void train_nnue_model()
     Ranger optimizer({g1, g2, g3}, ranger_option);
     //Ranger optimizer({torch::optim::OptimizerParamGroup(nnue_model->parameters())}, ranger_option);
 
-    torch::Device cuda_device(torch::kCPU);
-    //torch::Device cuda_device(torch::kCUDA);
-    nnue_model->to(cuda_device);
+    //torch::Device main_device(torch::kCPU);
+    torch::Device main_device(torch::kCUDA);
+    nnue_model->to(main_device);
+
+
+    MyFileLogger trlogger("./training_output.log");
 
     int batch_size = 8192;
     //std::string train_fn = "/media/mc/Fastdata/Stockfish-NNUE/trainingdata100m/trn_100m_d10.bin";
@@ -278,7 +287,7 @@ void train_nnue_model()
                       << "Epoch " << epoch << " batch " << batch_id << " iter " << iter_id << '\n';
             batch = stream->next();
 
-            SparseBatchTensors batch_tensors(batch, &cuda_device);
+            SparseBatchTensors batch_tensors(batch, &main_device);
 
 /*
             std::cout << batch_tensors.us.device() << std::endl;
@@ -302,7 +311,8 @@ void train_nnue_model()
             optimizer.zero_grad();
 
             auto loss = nnue_model->compute_loss(batch_tensors, iter_id, "some_loss");
-
+            
+            //trlogger.log_txt("Loss: batch=" + std::to_string(iter_id) + " loss=" + std::to_string(loss.item<float>()) + "\n", false);
             //std::cout << nnue_model->input->bias.grad() << std::endl;
             //std::cout << nnue_model->l1->bias.grad() << std::endl;
             loss.backward();
@@ -387,9 +397,16 @@ void training_speed_benckmark()
 void test_model_forward_and_loss()
 {
     FeatureSetPy feat_set;
-    auto nnue_model = NNUEModel(&feat_set);
+    //auto nnue_model = NNUEModel(&feat_set);
+    auto nnue_model = NNUEModel("/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/nn_params.txt");
 
-    read_txt_nnue_model(nnue_model, "/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/nn_params.txt");
+    torch::Device main_device(torch::kCUDA);
+    nnue_model->to(main_device);
+
+    //for (auto &p : nnue_model->parameters()) {
+    //    p.to(main_device);
+    //    std::cout << p.sizes() << " " << p.device() << std::endl;
+    //}
 
     int batch_size = 10000;
     std::string fn = "/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/val_1m_d14.bin";
@@ -404,9 +421,11 @@ void test_model_forward_and_loss()
         //std::cout << "start batch " << batch_id << '\n';
         SparseBatch *batch;
         batch = stream->next();
-        SparseBatchTensors batch_tensors(batch);
+        SparseBatchTensors batch_tensors(batch, &main_device);
 
         auto loss = nnue_model->compute_loss(batch_tensors, batch_id, "some_loss");
+
+        loss.backward();
 
         std::cout << loss << std::endl;
         destroy_sparse_batch(batch);
@@ -551,4 +570,63 @@ void test_model_params_init()
     std::cout << "bias difference norm = " << torch::norm(nnue_model->output->bias) << " " << torch::norm(output_bias_py) << std::endl;
 
     inf.close();
+}
+
+
+float lweight[41024 * 256];
+float lbias[256];
+float output[256];
+
+int feature_indices[10 * 32];
+float feature_values[10 * 32];
+
+void test_featrans_kernel()
+{
+    //FeatureSetPy feat_set;
+    //auto nnue_model = NNUEModel(&feat_set);
+
+    //read_txt_nnue_model(nnue_model, "/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/nn_params.txt");
+
+    int batch_size = 10;
+    /*
+    std::string fn = "/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/val_1m_d14.bin";
+    auto stream = create_sparse_batch_stream("HalfKP", 1, fn.c_str(), batch_size, true, false, 0, false);
+    int64_t total_size = 100 * 1000000;
+    int64_t batch_cnt = total_size / batch_size;
+*/
+    //auto linear = torch::nn::Linear(INPUT_DIM, L1);
+
+    for (int i = 0; i < 10; i++) {
+        for (int j = 0 ; j < 32; j++) {
+            feature_indices[i * 32 + j] = j;
+            feature_values[i * 32 + j] = 1.0;
+        }
+    }
+
+    feature_transformer_slice_forward_wrapper(10, feature_indices, feature_values, lweight, lbias, output); 
+/*
+    auto t0 = std::chrono::high_resolution_clock::now();
+    std::cout << "batch_size = " << batch_size << '\n';
+    for (int batch_id = 0; batch_id < batch_cnt; batch_id++)
+    {
+        std::cout << "start batch " << batch_id << '\n';
+
+        SparseBatch *batch;
+        batch = stream->next();
+        SparseBatchTensors batch_tensors(batch);
+
+
+        //int num_threads = 256;
+
+        //template <uint32_t output_size, uint32_t max_active_features, uint32_t output_thread_slice_size>
+        //feature_transformer_slice_forward<256, 32, 4>(batch->white, batch->white_values, linear->weight.data_ptr(), linear->bias.data_ptr(), output);
+        
+        //feature_transformer_slice_forward_wrapper(1, batch->white, batch->white_values, lweight, lbias, output); 
+
+        //destroy_sparse_batch(batch);
+    }
+
+    auto t1 = std::chrono::high_resolution_clock::now();
+    std::cout << (t1 - t0).count() / 1e9 << "s\n";
+*/
 }

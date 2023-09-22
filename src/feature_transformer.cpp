@@ -3,19 +3,175 @@
 // #include <cuda.h>
 
 #include "feature_transformer.h"
+#include "featrans_kernel.cuh"
+
+
+class DoubleFeatureTransformerSliceFunction : public torch::autograd::Function<DoubleFeatureTransformerSliceFunction>
+{
+public:
+    static torch::autograd::tensor_list forward(torch::autograd::AutogradContext *ctx,
+                                                torch::Tensor feature_indices_0,
+                                                torch::Tensor feature_values_0,
+                                                torch::Tensor feature_indices_1,
+                                                torch::Tensor feature_values_1,
+                                                torch::Tensor weight,
+                                                torch::Tensor bias)
+    {
+        ctx->save_for_backward({feature_indices_0, feature_values_0, feature_indices_1, feature_values_1, weight, bias});
+/*
+        assert len(feature_indices_0.shape) == 2
+        assert len(feature_values_0.shape) == 2
+        assert feature_indices_0.shape[0] == feature_values_0.shape[0]
+        assert feature_indices_0.shape[1] == feature_values_0.shape[1]
+        assert feature_indices_0.dtype == torch.int32
+        assert feature_values_0.dtype == torch.float32
+
+        assert len(feature_indices_1.shape) == 2
+        assert len(feature_values_1.shape) == 2
+        assert feature_indices_1.shape[0] == feature_values_1.shape[0]
+        assert feature_indices_1.shape[1] == feature_values_1.shape[1]
+        assert feature_indices_1.dtype == torch.int32
+        assert feature_values_1.dtype == torch.float32
+
+        assert len(weight.shape) == 2
+        assert weight.dtype == torch.float32
+
+        assert len(bias.shape) == 1
+        assert bias.dtype == torch.float32
+
+        assert feature_indices_0.is_cuda
+        assert feature_values_0.is_cuda
+        assert feature_indices_1.is_cuda
+        assert feature_values_1.is_cuda
+        assert weight.is_cuda
+        assert bias.is_cuda
+
+        assert feature_values_0.device == feature_indices_0.device
+        assert feature_values_1.device == feature_indices_1.device
+        assert feature_indices_0.device == feature_indices_1.device
+        assert weight.device == feature_indices_0.device
+        assert bias.device == feature_indices_0.device
+
+        assert feature_indices_0.is_contiguous()
+        assert feature_values_0.is_contiguous()
+        assert feature_indices_1.is_contiguous()
+        assert feature_values_1.is_contiguous()
+        assert weight.is_contiguous()
+        assert bias.is_contiguous()
+*/
+        torch::Device device = feature_indices_0.device();
+        uint32_t batch_size = feature_indices_0.size(0);
+        uint32_t max_active_features = feature_indices_0.size(1);
+        uint32_t output_size = weight.size(1);
+
+        //std::cout << "-----------> batch_size = " << batch_size << std::endl;
+        //std::cout << "-----------> max_active_features = " << max_active_features << std::endl;
+        //std::cout << "-----------> output_size = " << output_size << std::endl;
+        //std::cout << "-----------> device = " << device<< std::endl;
+
+        auto output_options = torch::TensorOptions().dtype(torch::kFloat32).device(device).requires_grad(true); 
+        torch::Tensor output0 = torch::empty({batch_size, output_size}, output_options);
+        torch::Tensor output1 = torch::empty({batch_size, output_size}, output_options);
+
+
+        // std::cout << "-----------> weight require_grad = " << weight.requires_grad_() << std::endl;
+        // std::cout << "-----------> weight bias_grad = " << bias.requires_grad_() << std::endl;
+
+        //float* output_arr0 = new float[batch_size * output_size];
+        //float* output_arr1 = new float[batch_size * output_size];
+        feature_transformer_slice_forward_wrapper(batch_size, feature_indices_0.data_ptr<int32_t>(), feature_values_0.data_ptr<float>(), weight.data_ptr<float>(), bias.data_ptr<float>(), output0.data_ptr<float>());
+        feature_transformer_slice_forward_wrapper(batch_size, feature_indices_1.data_ptr<int32_t>(), feature_values_1.data_ptr<float>(), weight.data_ptr<float>(), bias.data_ptr<float>(), output1.data_ptr<float>());
+
+        //delete output_arr0;
+        //delete output_arr1;
+        // std::cout << "-----------> output_0 sizes = " << output_0[0].sizes() << std::endl;
+        // std::cout << "-----------> output_1 sizes = " << output_1[0].sizes() << std::endl;
+
+        return {output0, output1};
+    }
+
+    static torch::autograd::tensor_list backward(torch::autograd::AutogradContext *ctx,
+                                                 torch::autograd::tensor_list grad_outputs)
+    {
+        /*
+        assert not ctx.needs_input_grad[0]
+        assert not ctx.needs_input_grad[1]
+        */
+
+
+        auto saved = ctx->get_saved_variables();
+        auto feature_indices_0 = saved[0].contiguous();
+        auto feature_values_0 = saved[1].contiguous();
+        auto feature_indices_1 = saved[2].contiguous();
+        auto feature_values_1 = saved[3].contiguous();
+        auto weight = saved[4].contiguous();
+        auto bias = saved[5].contiguous();
+        //feature_indices_0, feature_values_0, feature_indices_1, feature_values_1, weight, bias = ctx.saved_tensors
+
+        torch::Device device = feature_indices_0.device();
+        uint32_t batch_size = feature_indices_0.size(0); //.sizes()[0];
+        uint32_t max_active_features = feature_indices_0.size(1); //.sizes()[1];
+        uint32_t output_size = weight.size(1); //.sizes()[1];
+
+        auto grad_output_0 = grad_outputs[0].contiguous().to(device);
+        auto grad_output_1 = grad_outputs[1].contiguous().to(device);
+
+        auto grad_options = torch::TensorOptions().dtype(torch::kFloat32).device(device); 
+        torch::Tensor weight_grad = torch::zeros({weight.sizes()[0], weight.sizes()[1]}, grad_options);
+        torch::Tensor bias_grad = torch::zeros({output_size}, grad_options);
+
+
+        feature_transformer_slice_backward_wrapper(batch_size, feature_indices_0.data_ptr<int32_t>(), feature_values_0.data_ptr<float>(), weight_grad.data_ptr<float>(), bias_grad.data_ptr<float>(), grad_output_0.data_ptr<float>());
+        feature_transformer_slice_backward_wrapper(batch_size, feature_indices_1.data_ptr<int32_t>(), feature_values_1.data_ptr<float>(), weight_grad.data_ptr<float>(), bias_grad.data_ptr<float>(), grad_output_1.data_ptr<float>());
+
+        return {torch::Tensor(), torch::Tensor(), torch::Tensor(), torch::Tensor(), weight_grad, bias_grad};
 
 /*
+        auto grad_weight_bias_0 = backward_single(feature_indices_0,
+                                                  feature_values_0,
+                                                  weight,
+                                                  bias,
+                                                  {grad_outputs[0]});
+        auto grad_weight_bias_1 = backward_single(feature_indices_1,
+                                                  feature_values_1,
+                                                  weight,
+                                                  bias,
+                                                  {grad_outputs[1]});
+        auto grad_weight = grad_weight_bias_0[2] + grad_weight_bias_1[2];
+        auto grad_bias = grad_weight_bias_0[3] + grad_weight_bias_1[3];
+
+        // std::cout << "===========> grad_weight sizes = " << grad_weight.sizes() << std::endl;
+        // std::cout << "===========> grad_bias sizes = " << grad_bias.sizes() << std::endl;
+
+        // return {grad_weight, grad_bias};
+        return {torch::Tensor(), torch::Tensor(), torch::Tensor(), torch::Tensor(), grad_weight, grad_bias};*/
+    }
+};
+
 DoubleFeatureTransformerSliceImpl::DoubleFeatureTransformerSliceImpl(int n_inputs, int n_outputs)
 {
     this->num_inputs = n_inputs;
     this->num_outputs = n_outputs;
 
     float sigma = std::sqrt(1.0 / (float)(num_inputs));
-    auto init_weight = torch::rand({num_inputs, num_outputs}, torch::kF32) * (2 * sigma) - sigma;
-    auto init_bias = torch::rand({num_outputs}, torch::kF32) * (2 * sigma) - sigma;
+    auto init_weight = torch::rand({num_inputs, num_outputs}, torch::kFloat32) * (2 * sigma) - sigma;
+    auto init_bias = torch::rand({num_outputs}, torch::kFloat32) * (2 * sigma) - sigma;
     this->weight = register_parameter("weight", init_weight, false);
     this->bias = register_parameter("bias", init_bias, false);
-}*/
+
+    this->weight.requires_grad_();
+    this->bias.requires_grad_();
+}
+
+torch::autograd::tensor_list DoubleFeatureTransformerSliceImpl::forward(torch::Tensor feature_indices_0,
+                                                        torch::Tensor feature_values_0,
+                                                        torch::Tensor feature_indices_1,
+                                                        torch::Tensor feature_values_1)
+{
+    return DoubleFeatureTransformerSliceFunction::apply(feature_indices_0, feature_values_0,
+                                                        feature_indices_1, feature_values_1,
+                                                        this->weight, this->bias);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

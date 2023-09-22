@@ -27,16 +27,16 @@ public:
 };
 TORCH_MODULE(FeatureTransformerSliceEmulate);
 
-/*
+
 // the fast version with cuda optimization
 struct DoubleFeatureTransformerSliceImpl : torch::nn::Module
 {
 public:
     DoubleFeatureTransformerSliceImpl(int num_inputs, int num_outputs);
-    torch::Tensor forward(torch::Tensor feature_indices_0,
-                          torch::Tensor feature_values_0,
-                          torch::Tensor feature_indices_1,
-                          torch::Tensor feature_values_1);
+    torch::autograd::tensor_list forward(torch::Tensor feature_indices_0,
+                                         torch::Tensor feature_values_0,
+                                         torch::Tensor feature_indices_1,
+                                         torch::Tensor feature_values_1);
 
     int num_inputs;
     int num_outputs;
@@ -44,7 +44,7 @@ public:
     torch::Tensor bias;
 };
 TORCH_MODULE(DoubleFeatureTransformerSlice);
-*/
+
 
 // slow CPU version
 struct FeatTransSlowImpl : torch::nn::Module

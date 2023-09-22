@@ -18,7 +18,8 @@ NNUEModelImpl::NNUEModelImpl(FeatureSetPy *feature_set_ptr)
     this->feature_set = feature_set_ptr;
 
     // this->input = register_module<FeatureTransformerSliceEmulate>("input", std::make_shared<FeatureTransformerSliceEmulate>(INPUT_DIM, L1));
-    this->input = FeatureTransformerSliceEmulate(INPUT_DIM, L1);
+    this->input = DoubleFeatureTransformerSlice(INPUT_DIM, L1);
+    //this->input = FeatureTransformerSliceEmulate(INPUT_DIM, L1);
     //this->input = FeatTransSlow(INPUT_DIM, L1);
     register_module("input", this->input);
     this->l1 = register_module("l1", torch::nn::Linear(2 * L1, L2));
@@ -35,7 +36,8 @@ torch::Tensor load_txt_tensor(std::ifstream &inf);
 
 NNUEModelImpl::NNUEModelImpl(std::string fn)
 {
-    this->input = FeatureTransformerSliceEmulate(INPUT_DIM, L1);
+    this->input = DoubleFeatureTransformerSlice(INPUT_DIM, L1);
+    //this->input = FeatureTransformerSliceEmulate(INPUT_DIM, L1);
     //this->input = FeatTransSlow(INPUT_DIM, L1);
     this->l1 = torch::nn::Linear(2 * L1, L2);
     this->l2 = torch::nn::Linear(L2, L3);
