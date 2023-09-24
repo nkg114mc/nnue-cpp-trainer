@@ -3,7 +3,7 @@
 
 
 FeatureSetPy::FeatureSetPy() {
-
+    hash = 1567217080;
 }
 
 FeatureSetPy::~FeatureSetPy() {

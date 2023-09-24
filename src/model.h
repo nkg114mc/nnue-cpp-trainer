@@ -25,7 +25,6 @@ public:
     torch::nn::Linear l1 = nullptr;
     torch::nn::Linear l2 = nullptr;
     torch::nn::Linear output = nullptr;
-    //torch::nn::Linear dummy = nullptr;
 
     std::string description;
 

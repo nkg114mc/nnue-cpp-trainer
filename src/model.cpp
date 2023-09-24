@@ -17,7 +17,6 @@ NNUEModelImpl::NNUEModelImpl(FeatureSetPy *feature_set_ptr)
 {
     this->feature_set = feature_set_ptr;
 
-    // this->input = register_module<FeatureTransformerSliceEmulate>("input", std::make_shared<FeatureTransformerSliceEmulate>(INPUT_DIM, L1));
     this->input = DoubleFeatureTransformerSlice(INPUT_DIM, L1);
     //this->input = FeatureTransformerSliceEmulate(INPUT_DIM, L1);
     //this->input = FeatTransSlow(INPUT_DIM, L1);

@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <fstream>
 #include <string>
+#include <cstring>
 
 #include "model.h"
 
@@ -28,42 +29,45 @@ public:
 
     static uint32_t fc_hash(NNUEModel &model) {
         /*
-        # InputSlice hash
-        prev_hash = 0xEC42E90D
-        prev_hash ^= (M.L1 * 2)
+        // InputSlice hash
+        uint32_t prev_hash = 0xEC42E90D;
+        prev_hash ^= (L1 * 2);
 
-        # Fully connected layers
-        layers = [model.l1, model.l2, model.output]
-        for layer in layers:
-            layer_hash = 0xCC03DAE4
+        // Fully connected layers
+        vector<torch::nn::Linear> layers{model.l1, model.l2, model.output}
+        for (layer in layers) {
+            layer_hash = 0xCC03DAE4;
             layer_hash += layer.out_features
             layer_hash ^= prev_hash >> 1
             layer_hash ^= (prev_hash << 31) & 0xFFFFFFFF
-            if layer.out_features != 1:
-                # Clipped ReLU hash
+            if (layer.out_features != 1) {
+                // Clipped ReLU hash
                 layer_hash = (layer_hash + 0x538D24C7) & 0xFFFFFFFF
+            }
             prev_hash = layer_hash
-        return layer_hash*/
-        return 0;
+        }
+        return layer_hash;*/
+        return 1664315734;
     }
 
-    NNUEWriter(NNUEModel &model, std::string fn) {
-
+    NNUEWriter(NNUEModel &md, std::string fn) {
+        this->model = md;
+        outf.open(fn, std::ios::out | std::ios::binary);
     }
 
     ~NNUEWriter() {
-        
+        outf.close();
     }
 
     void write_model() {
         uint32_t fc_hash_value = fc_hash(model);
         write_header(model, fc_hash_value);
-        //self.int32(model.feature_set.hash ^ (M.L1 * 2))  // Feature transformer hash
-        //self.write_feature_transformer(model)
+        write_int32(model->feature_set->get_hash() ^ (L1 * 2));  // Feature transformer hash
+        write_feature_transformer(model);
         write_int32(fc_hash_value);  // FC layers hash
-        //self.write_fc_layer(model.l1, false);
-        //self.write_fc_layer(model.l2, false);
-        //self.write_fc_layer(model.output, true);
+        write_fc_layer(model->l1, false);
+        write_fc_layer(model->l2, false);
+        write_fc_layer(model->output, true);
     }
 
 private:
@@ -71,16 +75,16 @@ private:
     NNUEModel model{nullptr};
 
     void write_header(NNUEModel &model, uint32_t fc_hash_value) {
-        /*
-        write_int32(VERSION)  // version
-        write_int32(fc_hash_value ^ model.feature_set.hash ^ (M.L1 * 2))  // halfkp network hash
+        write_int32(VERSION);  // version
+        write_int32(fc_hash_value ^ model->feature_set->get_hash() ^ (L1 * 2));  // halfkp network hash
         //# description = b"Features=HalfKP(Friend)[41024->256x2],"
         //# description += b"Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-32]"
         //# description += b"(ClippedReLU[32](AffineTransform[32<-512](InputSlice[512(0:512)])))))"
-        //description = model.description.encode('utf-8')
         // Network definition
-        write_int32(len(description))  
-        std::cout << "description:", model.description)*/
+        int desc_length = strlen(model->description.c_str());
+        write_int32(desc_length);
+        outf.write(model->description.c_str(), desc_length);
+        std::cout << "description:" << model->description << std::endl;
     }
 /*
     void coalesce_ft_weights(NNUEModel &model, layer) {
@@ -91,60 +95,71 @@ private:
             weight_coalesced[i_real, :] = sum(weight[i_virtual, :] for i_virtual in is_virtual)
         return weight_coalesced
     }
-
+*/
     void write_feature_transformer(NNUEModel &model) {
         // int16 bias = round(x * 127)
         // int16 weight = round(x * 127)
-        layer = model->input;
-        bias = layer.bias.data
-        bias = bias.mul(127).round().to(torch::kInt16);
+        //layer = model->input;
+        //bias = layer.bias.data
+        auto bias_int = model->input->bias.mul(127).round().to(torch::kInt16);
         // ascii_hist('ft bias:', bias.numpy())
-        self.buf.extend(bias.flatten().numpy().tobytes())
+        int bias_size = bias_int.size(0);
+        outf.write(reinterpret_cast<char*>(bias_int.data_ptr<int16_t>()), sizeof(int16_t) * bias_size);
+        //self.buf.extend(bias.flatten().numpy().tobytes())
 
-        weight = self.coalesce_ft_weights(model, layer)
-        weight = weight.mul(127).round().to(torch.int16)
-        ascii_hist('ft weight:', weight.numpy())
+        //weight = self.coalesce_ft_weights(model, layer)
+        auto weight_int = model->input->weight.mul(127).round().to(torch::kInt16);
+        // ascii_hist('ft weight:', weight.numpy())
         // weights stored as [41024][256]
-        self.buf.extend(weight.flatten().numpy().tobytes())
+        int weight_size = weight_int.size(0) * weight_int.size(1);
+        outf.write(reinterpret_cast<char*>(weight_int.data_ptr<int16_t>()), sizeof(int16_t) * weight_size);
+        //self.buf.extend(weight.flatten().numpy().tobytes())
     }
-*/
-/*
-    void write_fc_layer( layer, bool is_output) {
-        # FC layers are stored as int8 weights, and int32 biases
-        kWeightScaleBits = 6
-        kActivationScale = 127.0
-        if not is_output:
-            kBiasScale = (1 << kWeightScaleBits) * kActivationScale  # = 8128
-        else:
-            kBiasScale = 9600.0  # kPonanzaConstant * FV_SCALE = 600 * 16 = 9600
-        kWeightScale = kBiasScale / kActivationScale  # = 64.0 for normal layers
-        kMaxWeight = 127.0 / kWeightScale  # roughly 2.0
 
-        # int32 bias = round(x * kBiasScale)
-        # int8 weight = round(x * kWeightScale)
-        bias = layer.bias.data
-        bias = bias.mul(kBiasScale).round().to(torch.int32)
-        ascii_hist('fc bias:', bias.numpy())
-        self.buf.extend(bias.flatten().numpy().tobytes())
-        weight = layer.weight.data
-        clipped = torch.count_nonzero(weight.clamp(-kMaxWeight, kMaxWeight) - weight)
-        total_elements = torch.numel(weight)
-        clipped_max = torch.max(torch.abs(weight.clamp(-kMaxWeight, kMaxWeight) - weight))
-        print("layer has {}/{} clipped weights. Exceeding by {} the maximum {}.".format(clipped, total_elements,
-                                                                                        clipped_max, kMaxWeight))
-        weight = weight.clamp(-kMaxWeight, kMaxWeight).mul(kWeightScale).round().to(torch.int8)
-        ascii_hist('fc weight:', weight.numpy())
-        # FC inputs are padded to 32 elements for simd.
+
+    void write_fc_layer(torch::nn::Linear &layer, bool is_output) {
+        // FC layers are stored as int8 weights, and int32 biases
+        int kWeightScaleBits = 6;
+        float kActivationScale = 127.0;
+        float kBiasScale = 0;
+        if (is_output) {
+            kBiasScale = (1 << kWeightScaleBits) * kActivationScale;  // = 8128
+        } else {
+            kBiasScale = 9600.0;  // kPonanzaConstant * FV_SCALE = 600 * 16 = 9600
+        }
+        float kWeightScale = kBiasScale / kActivationScale;  // = 64.0 for normal layers
+        float kMaxWeight = 127.0 / kWeightScale;  // roughly 2.0
+
+        // int32 bias = round(x * kBiasScale)
+        // int8 weight = round(x * kWeightScale)
+        //bias = layer.bias.data
+        auto bias_int = layer->bias.mul(kBiasScale).round().to(torch::kInt32);
+        //ascii_hist('fc bias:', bias.numpy())
+        //self.buf.extend(bias.flatten().numpy().tobytes())
+        int bias_size = bias_int.size(0);
+        outf.write(reinterpret_cast<char*>(bias_int.data_ptr<int32_t>()), sizeof(int32_t) * bias_size);
+
+        //clipped = torch::count_nonzero(layer->weight.clamp(-kMaxWeight, kMaxWeight) - layer->weight)
+        //total_elements = torch.numel(weight)
+        //clipped_max = torch.max(torch.abs(weight.clamp(-kMaxWeight, kMaxWeight) - weight))
+        //printf("layer has %d/{} clipped weights. Exceeding by {} the maximum {}.".format(clipped, total_elements, clipped_max, kMaxWeight))
+        auto weight_int = layer->weight.clamp(-kMaxWeight, kMaxWeight).mul(kWeightScale).round().to(torch::kInt8);
+        //ascii_hist('fc weight:', weight.numpy())
+        /*
+        // FC inputs are padded to 32 elements for simd.
         num_input = weight.shape[1]
         if num_input % 32 != 0:
             num_input += 32 - (num_input % 32)
             new_w = torch.zeros(weight.shape[0], num_input, dtype=torch.int8)
             new_w[:, :weight.shape[1]] = weight
             weight = new_w
-        # Stored as [outputs][inputs], so we can flatten
-        self.buf.extend(weight.flatten().numpy().tobytes())
+        */
+        // Stored as [outputs][inputs], so we can flatten
+        //self.buf.extend(weight.flatten().numpy().tobytes())
+        int weight_size = weight_int.size(0) * weight_int.size(1);
+        outf.write(reinterpret_cast<char*>(weight_int.data_ptr<int8_t>()), sizeof(int8_t) * weight_size);
     }
-*/
+
     void write_int32(uint32_t v) {
         outf.write(reinterpret_cast<char*>(&v), sizeof(v));
     }
@@ -325,13 +340,19 @@ void save_model_nnue_format(nnue_model, target_fn) {
 */
 
 void save_model_nnue_format(NNUEModel &nnue_model, std::string target_fn) {
-/*
-    if not target_fn.endswith('.nnue'):
-        raise Exception('Invalid network output format.')
-    writer = NNUEWriter(nnue_model);
-    with open(target_fn, 'wb') as f:
-        f.write(writer.buf)
-*/
+    //if not target_fn.endswith('.nnue'):
+    //    raise Exception('Invalid network output format.')
+    NNUEWriter writer(nnue_model, target_fn);
+    writer.write_model();
+}
+
+void test_model_serializer_write() {
+    FeatureSetPy feat_set;
+    auto nnue_model = NNUEModel("/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/nn_params.txt");
+    nnue_model->feature_set = &feat_set;
+    //nnue_model->description = "12345shangshandalaohu";
+    nnue_model->description = "八月秋风阵阵凉，一场白露一场霜";
+    save_model_nnue_format(nnue_model, "/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/cpp-model_output.nnue");
 }
 
 void main_simple() {
