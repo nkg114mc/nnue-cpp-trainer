@@ -62,7 +62,7 @@ public:
     void write_model() {
         uint32_t fc_hash_value = fc_hash(model);
         write_header(model, fc_hash_value);
-        write_int32(model->feature_set->get_hash() ^ (L1 * 2));  // Feature transformer hash
+        write_int32(model->feature_set->get_hash() ^ (L1 * 2));  // Feature transformer 
         write_feature_transformer(model);
         write_int32(fc_hash_value);  // FC layers hash
         write_fc_layer(model->l1, false);
@@ -99,13 +99,10 @@ private:
     void write_feature_transformer(NNUEModel &model) {
         // int16 bias = round(x * 127)
         // int16 weight = round(x * 127)
-        //layer = model->input;
-        //bias = layer.bias.data
         auto bias_int = model->input->bias.mul(127).round().to(torch::kInt16);
         // ascii_hist('ft bias:', bias.numpy())
         int bias_size = bias_int.size(0);
         outf.write(reinterpret_cast<char*>(bias_int.data_ptr<int16_t>()), sizeof(int16_t) * bias_size);
-        //self.buf.extend(bias.flatten().numpy().tobytes())
 
         //weight = self.coalesce_ft_weights(model, layer)
         auto weight_int = model->input->weight.mul(127).round().to(torch::kInt16);
@@ -113,7 +110,6 @@ private:
         // weights stored as [41024][256]
         int weight_size = weight_int.size(0) * weight_int.size(1);
         outf.write(reinterpret_cast<char*>(weight_int.data_ptr<int16_t>()), sizeof(int16_t) * weight_size);
-        //self.buf.extend(weight.flatten().numpy().tobytes())
     }
 
 
@@ -132,10 +128,8 @@ private:
 
         // int32 bias = round(x * kBiasScale)
         // int8 weight = round(x * kWeightScale)
-        //bias = layer.bias.data
         auto bias_int = layer->bias.mul(kBiasScale).round().to(torch::kInt32);
         //ascii_hist('fc bias:', bias.numpy())
-        //self.buf.extend(bias.flatten().numpy().tobytes())
         int bias_size = bias_int.size(0);
         outf.write(reinterpret_cast<char*>(bias_int.data_ptr<int32_t>()), sizeof(int32_t) * bias_size);
 
@@ -155,7 +149,6 @@ private:
             weight = new_w
         */
         // Stored as [outputs][inputs], so we can flatten
-        //self.buf.extend(weight.flatten().numpy().tobytes())
         int weight_size = weight_int.size(0) * weight_int.size(1);
         outf.write(reinterpret_cast<char*>(weight_int.data_ptr<int8_t>()), sizeof(int8_t) * weight_size);
     }

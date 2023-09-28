@@ -34,7 +34,7 @@ int main()
     //test_read_batch_stream();
 
     //train_nnue_model();
-    //training_speed_benckmark();
+    training_speed_benckmark();
     //test_featrans_kernel();
 
     //test_create_ranger_optimizer();
@@ -46,5 +46,5 @@ int main()
     //test_model_backward();
     //test_model_params_init();
 
-    test_model_serializer_write();
+    //test_model_serializer_write();
 }

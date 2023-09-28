@@ -263,20 +263,20 @@ void train_nnue_model()
     torch::Device main_device(torch::kCUDA);
     nnue_model->to(main_device);
 
-
+    std::string output_model_fn = "cpp_output.nnue";
     MyFileLogger trlogger("./training_output.log");
 
-    int batch_size = 8192;
+    int64_t batch_size = 8192;
     //std::string train_fn = "/media/mc/Fastdata/Stockfish-NNUE/trainingdata100m/trn_100m_d10.bin";
     std::string train_fn = "/media/mc/Fastdata/Stockfish-NNUE/trainingdata1b/trn_1b_d10.bin";
     auto stream = create_sparse_batch_stream("HalfKP", 4, train_fn.c_str(), batch_size, true, true, 0, false);
-    int64_t total_size = 100 * 1000000;
+    int64_t total_size = 1000000000ll;
     int64_t batch_cnt = total_size / batch_size;
     auto t0 = std::chrono::high_resolution_clock::now();
 
     std::cout << "batch_size = " << batch_size << '\n';
     int iter_id = -1;
-    for (int epoch = 0; epoch <= 10; epoch++)
+    for (int epoch = 0; epoch < 2; epoch++)
     {
         for (int batch_id = 0; batch_id < batch_cnt; batch_id++)
         {
@@ -337,6 +337,12 @@ void train_nnue_model()
         }
     }
 
+    // dump output to model file
+    torch::Device cpu_device(torch::kCPU);
+    nnue_model->to(cpu_device);
+    nnue_model->description = std::string("八月秋风阵阵凉，一场白露一场霜，小严霜单打独根草，挂大扁儿甩籽荞麦梗儿上，也");
+    save_model_nnue_format(nnue_model, output_model_fn);
+
     auto t1 = std::chrono::high_resolution_clock::now();
     std::cout << (t1 - t0).count() / 1e9 << "s\n";
 }
@@ -357,7 +363,7 @@ void training_speed_benckmark()
     int batch_size = 10000;
     //std::string train_fn = "/media/mc/Fastdata/Stockfish-NNUE/trainingdata100m/trn_100m_d10.bin";
     std::string train_fn = "/media/mc/Fastdata/Stockfish-NNUE/trainingdata1b/trn_1b_d10.bin";
-    auto stream = create_sparse_batch_stream("HalfKP", 4, train_fn.c_str(), batch_size, true, false, 0, false);
+    auto stream = create_sparse_batch_stream("HalfKP", 32, train_fn.c_str(), batch_size, true, false, 0, false);
     int64_t total_size = 100 * 1000000;
     int64_t batch_cnt = total_size / batch_size;
 
@@ -374,7 +380,11 @@ void training_speed_benckmark()
         std::cout << "start " << "batch " << batch_id << " iter " << iter_id << '\n';
         batch = stream->next();
 
+        auto iter_t3 = std::chrono::system_clock::now();
+
         SparseBatchTensors batch_tensors(batch, &cuda_device);
+
+        auto iter_t2 = std::chrono::system_clock::now();
 
         optimizer.zero_grad();
 
@@ -388,6 +398,10 @@ void training_speed_benckmark()
 
         auto iter_t1 = std::chrono::system_clock::now();
         std::cout << "iteration time: " << (iter_t1 - iter_t0).count() / 1e9 << "s\n";
+        std::cout << "data-loading time: " << (iter_t2 - iter_t0).count() / 1e9 << "s\n";
+        std::cout << "data-reading time: " << (iter_t3 - iter_t0).count() / 1e9 << "s\n";
+        std::cout << "data-convert time: " << (iter_t2 - iter_t3).count() / 1e9 << "s\n";
+        std::cout << "optimization time: " << (iter_t1 - iter_t2).count() / 1e9 << "s\n";
     }
 
     auto t1 = std::chrono::system_clock::now();

@@ -9,6 +9,7 @@
 
 NNUEModel load_model_from_nnuebin(std::string source_path,
                                   FeatureSetPy *feature_set);
+void save_model_nnue_format(NNUEModel &nnue_model, std::string target_fn);
 
 void main_simple();
 

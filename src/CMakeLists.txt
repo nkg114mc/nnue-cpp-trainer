@@ -8,16 +8,6 @@ find_package(Torch REQUIRED)
 find_package(Threads REQUIRED)
 find_package(CUDA REQUIRED)
 
-# Add CUDA files to the project
-#set(CUDA_FILES
-#    vector_add.cu
-#)
-
-# Add C++ files to the project
-#set(CPP_FILES
-#    main.cpp
-#)
-
 set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-O3 -g -G -arch=sm_70;)
 
 add_executable(cpp-trainer main.cpp model.cpp serialize.cpp feature_transformer.cpp sparse_batch.cpp feature_set.cpp ranger.cpp my_logger.cpp featrans_kernel.cu)
