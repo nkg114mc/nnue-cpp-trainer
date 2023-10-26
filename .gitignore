@@ -60,4 +60,5 @@ Thumbs.db
 build*
 .vscode
 
+binpack_count
 cpp-trainer
