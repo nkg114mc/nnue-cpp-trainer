@@ -1,31 +1,3 @@
-/*
-class SparseBatch(ctypes.Structure):
-    _fields_ = [
-        ('num_inputs', ctypes.c_int),
-        ('size', ctypes.c_int),
-        ('is_white', ctypes.POINTER(ctypes.c_float)),
-        ('outcome', ctypes.POINTER(ctypes.c_float)),
-        ('score', ctypes.POINTER(ctypes.c_float)),
-        ('num_active_white_features', ctypes.c_int),
-        ('num_active_black_features', ctypes.c_int),
-        ('max_active_features', ctypes.c_int),
-        ('white', ctypes.POINTER(ctypes.c_int)),
-        ('black', ctypes.POINTER(ctypes.c_int)),
-        ('white_values', ctypes.POINTER(ctypes.c_float)),
-        ('black_values', ctypes.POINTER(ctypes.c_float))
-    ]
-
-    def get_tensors(self, device):
-        white_values = torch.from_numpy(np.ctypeslib.as_array(self.white_values, shape=(self.size, self.max_active_features))).pin_memory().to(device=device, non_blocking=True)
-        black_values = torch.from_numpy(np.ctypeslib.as_array(self.black_values, shape=(self.size, self.max_active_features))).pin_memory().to(device=device, non_blocking=True)
-        white_indices = torch.from_numpy(np.ctypeslib.as_array(self.white, shape=(self.size, self.max_active_features))).pin_memory().to(device=device, non_blocking=True)
-        black_indices = torch.from_numpy(np.ctypeslib.as_array(self.black, shape=(self.size, self.max_active_features))).pin_memory().to(device=device, non_blocking=True)
-        us = torch.from_numpy(np.ctypeslib.as_array(self.is_white, shape=(self.size, 1))).pin_memory().to(device=device, non_blocking=True)
-        them = 1.0 - us
-        outcome = torch.from_numpy(np.ctypeslib.as_array(self.outcome, shape=(self.size, 1))).pin_memory().to(device=device, non_blocking=True)
-        score = torch.from_numpy(np.ctypeslib.as_array(self.score, shape=(self.size, 1))).pin_memory().to(device=device, non_blocking=True)
-        return us, them, white_indices, white_values, black_indices, black_values, outcome, score
-*/
 #include <chrono>
 
 #include "training_data_loader.h"
@@ -72,60 +44,10 @@ void SparseBatchTensors::get_tensors()
     score = torch::from_blob(batch_ptr->score, {batch_ptr->size, 1}, float_options).pin_memory().to(*device_ptr);     // torch.from_numpy(np.ctypeslib.as_array(self.score, shape=(self.size, 1))).pin_memory().to(device=device, non_blocking=True)
 }
 
-// for testing
-void test_read_batch_stream()
-{
-    FeatureSetPy *fs_ptr;
-    auto nnue_model = NNUEModel(fs_ptr);
-    auto feature_trans = FeatureTransformerSliceEmulate(41024, 256);
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    for (const auto &p : nnue_model->parameters())
-    {
-        std::cout << p.sizes() << std::endl;
-    }
-
-    FeatureSetPy fs;
-    // load_model_from_nnuebin("./nn-myoutput.nnue", &fs);
-    // load_model_from_nnuebin("./nn-62ef826d1a6d.nnue", &fs);
-    // load_model_from_nnuebin("./output-0.nnue", &fs);
-    load_model_from_nnuebin("/home/mc/sidework/chessengines/Stockfish-sf_132/src/nn-62ef826d1a6d.nnue", &fs);
-
-    int batch_size = 10000;
-    auto stream = create_sparse_batch_stream("HalfKP", 4, "/media/mc/Fastdata/Stockfish-NNUE/validate1m/val_1m_d14.bin", batch_size, false, false, 0, false);
-    auto t0 = std::chrono::high_resolution_clock::now();
-
-    std::cout << "batch_size = " << batch_size << '\n';
-    for (int i = 0; i < 101; ++i)
-    {
-        SparseBatch *batch;
-        std::cout << "start batch " << i << '\n';
-        batch = stream->next();
-        std::cout << "batch " << i << '\n';
-        std::cout << batch->num_inputs << " " << batch->size << " " << batch->max_active_features << std::endl;
-        /*
-                int total = batch->size * batch->max_active_features;
-                for (int id = 0; id < total; id++) {
-                    std::cout << batch->white[id] << " " << std::endl;
-                }
-        */
-        SparseBatchTensors batch_tensors(batch);
-        std::cout << "before forward" << std::endl;
-        /*
-                auto output = nnue_model->forward(batch_tensors.us,
-                                                  batch_tensors.them,
-                                                  batch_tensors.white_indices,
-                                                  batch_tensors.white_values,
-                                                  batch_tensors.black_indices,
-                                                  batch_tensors.black_values);
-
-                std::cout << output.sizes() << std::endl;
-                // if (i % 100 == 0) std::cout << i << '\n';
-        */
-        destroy_sparse_batch(batch);
-    }
-    auto t1 = std::chrono::high_resolution_clock::now();
-    std::cout << (t1 - t0).count() / 1e9 << "s\n";
-}
 
 void read_txt_nnue_model(NNUEModel &model, std::string fn) {
 
@@ -155,46 +77,26 @@ void read_txt_nnue_model(NNUEModel &model, std::string fn) {
     std::cout << "Done reading model parameters from txt" << std::endl;
 }
 
-void configure_ranger_optimizer(NNUEModel &model, RangerOptions &default_option) {
+void run_validation(std::string val_fn, int64_t epoch_size, torch::Device &main_device, NNUEModel &model, MyFileLogger &trlogger) {
 
-    std::vector<torch::Tensor> input_params{model->input->parameters()};
-    std::vector<torch::Tensor> hidden_params;
-    for (auto &p : model->l1->parameters()) {
-        hidden_params.push_back(p);
+    int random_fen_skipping = 3;
+    int64_t batch_size = 10000;
+    auto stream = create_sparse_batch_stream("HalfKP", 32, val_fn.c_str(), batch_size, true, true, random_fen_skipping, false);
+    int64_t batch_cnt = (epoch_size + batch_size - 1) / batch_size;
+
+    for (int batch_id = 0; batch_id < batch_cnt; batch_id++)
+    {
+        std::cout << "Running validation batch " << batch_id << '\n';
+
+        SparseBatch *batch;
+        batch = stream->next();
+        SparseBatchTensors batch_tensors(batch, &main_device);
+
+        auto loss = model->compute_loss(batch_tensors, batch_id, "val_loss");
+            
+        trlogger.log_txt("Loss: batch=" + std::to_string(batch_id) + " loss=" + std::to_string(loss.item<float>()) + "\n", false);
+        destroy_sparse_batch(batch);
     }
-    for (auto &p : model->l2->parameters()) {
-        hidden_params.push_back(p);
-    }
-    std::vector<torch::Tensor> output_params{model->output->parameters()};
-
-    auto input_option = RangerOptions(default_option);
-    auto hidden_option = RangerOptions(default_option);
-    auto output_option = RangerOptions(default_option);
-
-    std::cout << (&default_option) << " " << (&input_option) << std::endl;
-    std::cout << "learning_rate" << " " << input_option.lr() << std::endl;
-
-    std::cout << model->input->parameters().size() << " " << input_params.size() << std::endl;
-    std::cout << model->input->parameters().size() << " " << output_params.size() << std::endl;
-    std::cout << model->l1->parameters().size() << "+" << model->l2->parameters().size() << " " << hidden_params.size() << std::endl;
-    /*
-        LR = 1e-3
-        train_params = [
-            {'params': self.get_layers(lambda x: self.input == x), 'lr': LR, 'gc_dim': 0},
-            {'params': self.get_layers(lambda x: self.output != x and self.input != x), 'lr': LR},
-            {'params': self.get_layers(lambda x: self.output == x), 'lr': LR / 10},
-        ]
-    */
-    const double LR = 1e-3;
-    input_option.lr(LR).gc_dim(0);
-    hidden_option.lr(LR);
-    output_option.lr(LR / 10.0);
-
-/*
-    result.push_back(torch::optim::OptimizerParamGroup(input_params, std::make_unique<torch::optim::OptimizerOptions>(input_option)));
-    result.push_back(torch::optim::OptimizerParamGroup(hidden_params, std::make_unique<torch::optim::OptimizerOptions>(hidden_option)));
-    result.push_back(torch::optim::OptimizerParamGroup(output_params, std::make_unique<torch::optim::OptimizerOptions>(output_option)));
-*/
 }
 
 void train_nnue_model()
@@ -259,32 +161,39 @@ void train_nnue_model()
     Ranger optimizer({g1, g2, g3}, ranger_option);
     //Ranger optimizer({torch::optim::OptimizerParamGroup(nnue_model->parameters())}, ranger_option);
 
+    auto lr_schedulr = torch::optim::StepLR(optimizer, 1, 0.992);
+
     //torch::Device main_device(torch::kCPU);
     torch::Device main_device(torch::kCUDA);
     nnue_model->to(main_device);
 
-    std::string output_model_fn = "cpp_output.nnue";
+    std::string output_model_fn = "/home/mc/sidework/nnchess/nnue-trainer/my-cpp-trainer/cpp-networks/cpp_output_1.nnue";
     MyFileLogger trlogger("./training_output.log");
 
-    int64_t batch_size = 8192;
+    //int64_t batch_size = 8192;
+    int64_t batch_size = 16384;
+    int random_fen_skipping = 3;
     //std::string train_fn = "/media/mc/Fastdata/Stockfish-NNUE/trainingdata100m/trn_100m_d10.bin";
-    std::string train_fn = "/media/mc/Fastdata/Stockfish-NNUE/trainingdata1b/trn_1b_d10.bin";
-    auto stream = create_sparse_batch_stream("HalfKP", 4, train_fn.c_str(), batch_size, true, true, 0, false);
-    int64_t total_size = 1000000000ll;
-    int64_t batch_cnt = total_size / batch_size;
+    //std::string train_fn = "/media/mc/Fastdata/Stockfish-NNUE/trainingdata1b/trn_1b_d10.bin";
+    std::string train_fn = "/media/mc/Fastdata/Stockfish-NNUE/training_sf_official/large_gensfen_multipvdiff_100_d9.binpack";
+    auto stream = create_sparse_batch_stream("HalfKP", 32, train_fn.c_str(), batch_size, true, true, random_fen_skipping, false);
+    //int64_t total_size = 1000000000ll;
+    int64_t epoch_size = 100000000ll;
+    int64_t batch_cnt = (epoch_size + batch_size - 1) / batch_size;
     auto t0 = std::chrono::high_resolution_clock::now();
 
     std::cout << "batch_size = " << batch_size << '\n';
-    int iter_id = -1;
-    for (int epoch = 0; epoch < 2; epoch++)
+    int64_t iter_id = -1;
+    int MAX_EPOCH = 600;
+    for (int epoch = 0; epoch < MAX_EPOCH; epoch++)
     {
         for (int batch_id = 0; batch_id < batch_cnt; batch_id++)
         {
             iter_id++;
 
             SparseBatch *batch;
-            std::cout << "start "
-                      << "Epoch " << epoch << " batch " << batch_id << " iter " << iter_id << '\n';
+            //std::cout << "start "
+            //          << "Epoch " << epoch << " batch " << batch_id << " iter " << iter_id << '\n';
             batch = stream->next();
 
             SparseBatchTensors batch_tensors(batch, &main_device);
@@ -312,7 +221,10 @@ void train_nnue_model()
 
             auto loss = nnue_model->compute_loss(batch_tensors, iter_id, "some_loss");
             
-            //trlogger.log_txt("Loss: batch=" + std::to_string(iter_id) + " loss=" + std::to_string(loss.item<float>()) + "\n", false);
+            if (iter_id % 10 == 0) {
+                trlogger.log_txt("Loss: epoch=" + std::to_string(epoch) + " batch=" + std::to_string(iter_id) + " loss=" + std::to_string(loss.item<float>()) + "\n", true);
+            }
+            
             //std::cout << nnue_model->input->bias.grad() << std::endl;
             //std::cout << nnue_model->l1->bias.grad() << std::endl;
             loss.backward();
@@ -335,12 +247,19 @@ void train_nnue_model()
 
             destroy_sparse_batch(batch);
         }
+
+        // reduce learning rate
+        lr_schedulr.step();
+
+        std::cout << optimizer.param_groups()[0].options().get_lr() << std::endl;
+        std::cout << optimizer.param_groups()[1].options().get_lr() << std::endl;
+        std::cout << optimizer.param_groups()[2].options().get_lr() << std::endl;
     }
 
     // dump output to model file
     torch::Device cpu_device(torch::kCPU);
     nnue_model->to(cpu_device);
-    nnue_model->description = std::string("八月秋风阵阵凉，一场白露一场霜，小严霜单打独根草，挂大扁儿甩籽荞麦梗儿上，也");
+    nnue_model->description = std::string("小严霜单打独根草");
     save_model_nnue_format(nnue_model, output_model_fn);
 
     auto t1 = std::chrono::high_resolution_clock::now();
@@ -360,9 +279,10 @@ void training_speed_benckmark()
     //torch::Device cuda_device(torch::kCPU);
     nnue_model->to(cuda_device);
 
-    int batch_size = 10000;
+    int batch_size = 100000; //10000;
     //std::string train_fn = "/media/mc/Fastdata/Stockfish-NNUE/trainingdata100m/trn_100m_d10.bin";
-    std::string train_fn = "/media/mc/Fastdata/Stockfish-NNUE/trainingdata1b/trn_1b_d10.bin";
+    //std::string train_fn = "/media/mc/Fastdata/Stockfish-NNUE/trainingdata1b/trn_1b_d10.bin";
+    std::string train_fn = "/media/mc/Fastdata/Stockfish-NNUE/training_sf_official/large_gensfen_multipvdiff_100_d9.binpack";
     auto stream = create_sparse_batch_stream("HalfKP", 32, train_fn.c_str(), batch_size, true, false, 0, false);
     int64_t total_size = 100 * 1000000;
     int64_t batch_cnt = total_size / batch_size;
@@ -406,241 +326,4 @@ void training_speed_benckmark()
 
     auto t1 = std::chrono::system_clock::now();
     std::cout << "total time: " << (t1 - t0).count() / 1e9 << "s\n";
-}
-
-void test_model_forward_and_loss()
-{
-    FeatureSetPy feat_set;
-    //auto nnue_model = NNUEModel(&feat_set);
-    auto nnue_model = NNUEModel("/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/nn_params.txt");
-
-    torch::Device main_device(torch::kCUDA);
-    nnue_model->to(main_device);
-
-    //for (auto &p : nnue_model->parameters()) {
-    //    p.to(main_device);
-    //    std::cout << p.sizes() << " " << p.device() << std::endl;
-    //}
-
-    int batch_size = 10000;
-    std::string fn = "/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/val_1m_d14.bin";
-    auto stream = create_sparse_batch_stream("HalfKP", 4, fn.c_str(), batch_size, true, false, 0, false);
-    int64_t total_size = 100 * 1000000;
-    int64_t batch_cnt = total_size / batch_size;
-    
-    auto t0 = std::chrono::high_resolution_clock::now();
-    std::cout << "batch_size = " << batch_size << '\n';
-    for (int batch_id = 0; batch_id < batch_cnt; batch_id++)
-    {
-        //std::cout << "start batch " << batch_id << '\n';
-        SparseBatch *batch;
-        batch = stream->next();
-        SparseBatchTensors batch_tensors(batch, &main_device);
-
-        auto loss = nnue_model->compute_loss(batch_tensors, batch_id, "some_loss");
-
-        loss.backward();
-
-        std::cout << loss << std::endl;
-        destroy_sparse_batch(batch);
-    }
-
-    auto t1 = std::chrono::high_resolution_clock::now();
-    std::cout << (t1 - t0).count() / 1e9 << "s\n";
-}
-
-void test_model_backward()
-{
-    FeatureSetPy feat_set;
-    //auto nnue_model = NNUEModel(&feat_set);
-    auto nnue_model = NNUEModel("/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/nn_params.txt");
-
-    std::cout << &(nnue_model->input->weight) << std::endl;
-    std::cout << &(nnue_model->input->bias) << std::endl;
-
-    auto optim_option = torch::optim::AdamOptions(0.001);
-    torch::optim::Adam optimizer(nnue_model->parameters(), optim_option);
-
-    for (auto &p : nnue_model->parameters()) {
-        std::cout << "param: " <<  &(p) << p.sizes() << std::endl;
-    }
-
-
-    int batch_size = 10000;
-    std::string fn = "/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/val_1m_d14.bin";
-    auto stream = create_sparse_batch_stream("HalfKP", 4, fn.c_str(), batch_size, true, false, 0, false);
-    int64_t total_size = 100 * 1000000;
-    int64_t batch_cnt = 2; //total_size / batch_size;
-    
-
-    std::ifstream inf;
-    inf.open("/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/backward_test.txt");
-
-    std::cout << "batch_size = " << batch_size << '\n';
-    for (int batch_id = 0; batch_id < batch_cnt; batch_id++)
-    {
-        //std::cout << "start batch " << batch_id << '\n';
-        SparseBatch *batch;
-        batch = stream->next();
-        SparseBatchTensors batch_tensors(batch);
-
-        optimizer.zero_grad();
-
-/*
-        std::cout << nnue_model->input->weight.grad() << std::endl;
-        std::cout << nnue_model->input->bias.grad() << std::endl;
-
-        std::cout << nnue_model->l1->weight.grad() << std::endl;
-        std::cout << nnue_model->l1->bias.grad() << std::endl;
-
-        std::cout << nnue_model->l2->weight.grad() << std::endl;
-        std::cout << nnue_model->l2->bias.grad() << std::endl;
-
-        std::cout << nnue_model->output->weight.grad() << std::endl;
-        std::cout << nnue_model->output->bias.grad() << std::endl;
-*/
-
-        auto loss = nnue_model->compute_loss(batch_tensors, batch_id, "some_loss");
-        std::cout << "loss = " << loss << std::endl;
-
-        loss.backward();
-
-/*
-        std::cout << nnue_model->input->weight.grad().norm() << std::endl;
-        std::cout << nnue_model->input->bias.grad().norm() << std::endl;
-
-        std::cout << nnue_model->l1->weight.grad() << std::endl;
-        std::cout << nnue_model->l1->bias.grad() << std::endl;
-
-        std::cout << nnue_model->l2->weight.grad() << std::endl;
-        std::cout << nnue_model->l2->bias.grad() << std::endl;
-
-        std::cout << nnue_model->output->weight.grad() << std::endl;
-        std::cout << nnue_model->output->bias.grad() << std::endl;
-*/
-
-        // load expected
-        auto weight_grad = load_txt_tensor(inf);
-        auto bias_grad = load_txt_tensor(inf);
-        std::cout << "weight difference norm = " << torch::norm(nnue_model->input->weight.grad() - weight_grad) << std::endl;
-        std::cout << "bias difference norm = " << torch::norm(nnue_model->input->bias.grad() - bias_grad) << std::endl;
-
-        auto l1_weight_grad = load_txt_tensor(inf);
-        auto l1_bias_grad = load_txt_tensor(inf);
-        std::cout << "weight difference norm = " << torch::norm(nnue_model->l1->weight.grad() - l1_weight_grad) << std::endl;
-        std::cout << "bias difference norm = " << torch::norm(nnue_model->l1->bias.grad() - l1_bias_grad) << std::endl;
-
-        std::cout << nnue_model->l1->bias.grad() << std::endl;
-        std::cout << l1_bias_grad << std::endl;
-
-        auto l2_weight_grad = load_txt_tensor(inf);
-        auto l2_bias_grad = load_txt_tensor(inf);
-        std::cout << "weight difference norm = " << torch::norm(nnue_model->l2->weight.grad() - l2_weight_grad) << std::endl;
-        std::cout << "bias difference norm = " << torch::norm(nnue_model->l2->bias.grad() - l2_bias_grad) << std::endl;
-
-        auto output_weight_grad = load_txt_tensor(inf);
-        auto output_bias_grad = load_txt_tensor(inf);
-        std::cout << "weight difference norm = " << torch::norm(nnue_model->output->weight.grad() - output_weight_grad) << std::endl;
-        std::cout << "bias difference norm = " << torch::norm(nnue_model->output->bias.grad() - output_bias_grad) << std::endl;
-
-        destroy_sparse_batch(batch);
-    }
-
-    inf.close();
-}
-
-
-void test_model_params_init()
-{
-    FeatureSetPy feat_set;
-    auto nnue_model = NNUEModel(&feat_set);
-    
-    std::ifstream inf;
-    inf.open("/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/nn_params_pyinit.txt");
-
-    auto weight_py = load_txt_tensor(inf);
-    auto bias_py = load_txt_tensor(inf);
-    std::cout << "weight difference norm = " << torch::norm(nnue_model->input->weight) << " " << torch::norm(weight_py) << std::endl;
-    std::cout << "bias difference norm = " << torch::norm(nnue_model->input->bias) << " " << torch::norm(bias_py) << std::endl;
-
-    //std::cout << nnue_model->input->bias << " " << bias_py << std::endl;
-
-    auto l1_weight_py = load_txt_tensor(inf);
-    auto l1_bias_py = load_txt_tensor(inf);
-    std::cout << "weight difference norm = " << torch::norm(nnue_model->l1->weight) << " " << torch::norm(l1_weight_py) << std::endl;
-    std::cout << "bias difference norm = " << torch::norm(nnue_model->l1->bias) << " " << torch::norm(l1_bias_py) << std::endl;
-
-    auto l2_weight_py = load_txt_tensor(inf);
-    auto l2_bias_py = load_txt_tensor(inf);
-    std::cout << "weight difference norm = " << torch::norm(nnue_model->l2->weight) << " " << torch::norm(l2_weight_py) << std::endl;
-    std::cout << "bias difference norm = " << torch::norm(nnue_model->l2->bias) << " " << torch::norm(l2_bias_py) << std::endl;
-
-    //std::cout << nnue_model->l2->weight << " " << l2_weight_py << std::endl;
-    //std::cout << nnue_model->l2->bias << " " << l2_bias_py << std::endl;
-
-    auto output_weight_py = load_txt_tensor(inf);
-    auto output_bias_py = load_txt_tensor(inf);
-    std::cout << "weight difference norm = " << torch::norm(nnue_model->output->weight) << " " << torch::norm(output_weight_py) << std::endl;
-    std::cout << "bias difference norm = " << torch::norm(nnue_model->output->bias) << " " << torch::norm(output_bias_py) << std::endl;
-
-    inf.close();
-}
-
-
-float lweight[41024 * 256];
-float lbias[256];
-float output[256];
-
-int feature_indices[10 * 32];
-float feature_values[10 * 32];
-
-void test_featrans_kernel()
-{
-    //FeatureSetPy feat_set;
-    //auto nnue_model = NNUEModel(&feat_set);
-
-    //read_txt_nnue_model(nnue_model, "/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/nn_params.txt");
-
-    int batch_size = 10;
-    /*
-    std::string fn = "/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/val_1m_d14.bin";
-    auto stream = create_sparse_batch_stream("HalfKP", 1, fn.c_str(), batch_size, true, false, 0, false);
-    int64_t total_size = 100 * 1000000;
-    int64_t batch_cnt = total_size / batch_size;
-*/
-    //auto linear = torch::nn::Linear(INPUT_DIM, L1);
-
-    for (int i = 0; i < 10; i++) {
-        for (int j = 0 ; j < 32; j++) {
-            feature_indices[i * 32 + j] = j;
-            feature_values[i * 32 + j] = 1.0;
-        }
-    }
-
-    feature_transformer_slice_forward_wrapper(10, feature_indices, feature_values, lweight, lbias, output); 
-/*
-    auto t0 = std::chrono::high_resolution_clock::now();
-    std::cout << "batch_size = " << batch_size << '\n';
-    for (int batch_id = 0; batch_id < batch_cnt; batch_id++)
-    {
-        std::cout << "start batch " << batch_id << '\n';
-
-        SparseBatch *batch;
-        batch = stream->next();
-        SparseBatchTensors batch_tensors(batch);
-
-
-        //int num_threads = 256;
-
-        //template <uint32_t output_size, uint32_t max_active_features, uint32_t output_thread_slice_size>
-        //feature_transformer_slice_forward<256, 32, 4>(batch->white, batch->white_values, linear->weight.data_ptr(), linear->bias.data_ptr(), output);
-        
-        //feature_transformer_slice_forward_wrapper(1, batch->white, batch->white_values, lweight, lbias, output); 
-
-        //destroy_sparse_batch(batch);
-    }
-
-    auto t1 = std::chrono::high_resolution_clock::now();
-    std::cout << (t1 - t0).count() / 1e9 << "s\n";
-*/
 }

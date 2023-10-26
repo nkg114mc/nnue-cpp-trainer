@@ -33,8 +33,8 @@ int main()
     // test_construct_feature_transformer();
     //test_read_batch_stream();
 
-    //train_nnue_model();
-    training_speed_benckmark();
+    train_nnue_model();
+    //training_speed_benckmark();
     //test_featrans_kernel();
 
     //test_create_ranger_optimizer();

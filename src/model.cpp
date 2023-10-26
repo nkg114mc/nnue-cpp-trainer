@@ -172,9 +172,9 @@ torch::Tensor NNUEModelImpl::compute_loss(SparseBatchTensors &batch_tensors,
     auto loss = teacher_loss.mean() - teacher_entropy.mean();
     // self.log(loss_type, loss)
 
-    std::cout << "Loss: "
-              << "batch=" << batch_idx << " "
-              << "loss=" << loss << std::endl;
+    //std::cout << "Loss: "
+    //          << "batch=" << batch_idx << " "
+    //          << "loss=" << loss << std::endl;
     return loss;
 }
 

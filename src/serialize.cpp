@@ -22,32 +22,47 @@ def ascii_hist(name, x, bins=6):
         xi = '{0: <8.4g}'.format(xi).ljust(10)
         print('{0}| {1}'.format(xi, bar))
 */
+/*
+void ascii_hist(std::string name, x, bins=6) {
+
+    N, X = numpy.histogram(x, bins=bins)
+    total = 1.0 * len(x)
+    width = 50
+    nmax = N.max()
+
+    print(name)
+    for (xi, n) in zip(X, N):
+        bar = '#' * int(n * 1.0 * width / nmax)
+        xi = '{0: <8.4g}'.format(xi).ljust(10)
+        print('{0}| {1}'.format(xi, bar))
+
+}*/
+
 
 class NNUEWriter {
 public:
     // All values are stored in little endian.
 
     static uint32_t fc_hash(NNUEModel &model) {
-        /*
         // InputSlice hash
         uint32_t prev_hash = 0xEC42E90D;
         prev_hash ^= (L1 * 2);
 
         // Fully connected layers
-        vector<torch::nn::Linear> layers{model.l1, model.l2, model.output}
-        for (layer in layers) {
+        uint32_t layer_hash = 0;
+        std::vector<torch::nn::Linear> layers{model->l1, model->l2, model->output};
+        for (auto& layer : layers) {
             layer_hash = 0xCC03DAE4;
-            layer_hash += layer.out_features
-            layer_hash ^= prev_hash >> 1
-            layer_hash ^= (prev_hash << 31) & 0xFFFFFFFF
-            if (layer.out_features != 1) {
+            layer_hash += layer->options.out_features();
+            layer_hash ^= prev_hash >> 1;
+            layer_hash ^= (prev_hash << 31) & 0xFFFFFFFF;
+            if (layer->options.out_features() != 1) {
                 // Clipped ReLU hash
-                layer_hash = (layer_hash + 0x538D24C7) & 0xFFFFFFFF
+                layer_hash = (layer_hash + 0x538D24C7) & 0xFFFFFFFF;
             }
-            prev_hash = layer_hash
+            prev_hash = layer_hash;
         }
-        return layer_hash;*/
-        return 1664315734;
+        return layer_hash; // return 1664315734;
     }
 
     NNUEWriter(NNUEModel &md, std::string fn) {
@@ -118,7 +133,7 @@ private:
         int kWeightScaleBits = 6;
         float kActivationScale = 127.0;
         float kBiasScale = 0;
-        if (is_output) {
+        if (!is_output) {
             kBiasScale = (1 << kWeightScaleBits) * kActivationScale;  // = 8128
         } else {
             kBiasScale = 9600.0;  // kPonanzaConstant * FV_SCALE = 600 * 16 = 9600
@@ -133,10 +148,12 @@ private:
         int bias_size = bias_int.size(0);
         outf.write(reinterpret_cast<char*>(bias_int.data_ptr<int32_t>()), sizeof(int32_t) * bias_size);
 
-        //clipped = torch::count_nonzero(layer->weight.clamp(-kMaxWeight, kMaxWeight) - layer->weight)
-        //total_elements = torch.numel(weight)
-        //clipped_max = torch.max(torch.abs(weight.clamp(-kMaxWeight, kMaxWeight) - weight))
-        //printf("layer has %d/{} clipped weights. Exceeding by {} the maximum {}.".format(clipped, total_elements, clipped_max, kMaxWeight))
+        // clip weight
+        auto clipped = torch::count_nonzero(layer->weight.clamp(-kMaxWeight, kMaxWeight) - layer->weight);
+        auto total_elements = torch::numel(layer->weight);
+        auto clipped_max = torch::max(torch::abs(layer->weight.clamp(-kMaxWeight, kMaxWeight) - layer->weight));
+        std::cout << "layer has " << clipped.item<int>() << "/" << total_elements << " weights. Exceeding by " << clipped_max.item<float>() << " the maximum " << kMaxWeight << "." << std::endl;
+
         auto weight_int = layer->weight.clamp(-kMaxWeight, kMaxWeight).mul(kWeightScale).round().to(torch::kInt8);
         //ascii_hist('fc weight:', weight.numpy())
         /*
@@ -337,13 +354,15 @@ void save_model_nnue_format(NNUEModel &nnue_model, std::string target_fn) {
     //    raise Exception('Invalid network output format.')
     NNUEWriter writer(nnue_model, target_fn);
     writer.write_model();
+
+    uint32_t actual = NNUEWriter::fc_hash(nnue_model);
+    std::cout << actual << " == " << 1664315734 << std::endl;
 }
 
 void test_model_serializer_write() {
     FeatureSetPy feat_set;
     auto nnue_model = NNUEModel("/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/nn_params.txt");
     nnue_model->feature_set = &feat_set;
-    //nnue_model->description = "12345shangshandalaohu";
     nnue_model->description = "八月秋风阵阵凉，一场白露一场霜";
     save_model_nnue_format(nnue_model, "/home/mc/sidework/nnchess/tdlambda-nnue/tdlambda-py/build/grad_central_tests/cpp-model_output.nnue");
 }
