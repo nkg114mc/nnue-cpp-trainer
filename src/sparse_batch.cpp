@@ -168,7 +168,7 @@ void train_nnue_model()
     nnue_model->to(main_device);
 
     std::string output_model_fn = "/home/mc/sidework/nnchess/nnue-trainer/my-cpp-trainer/cpp-networks/cpp_output_1.nnue";
-    MyFileLogger trlogger("./training_output.log");
+    MyFileLogger trlogger("./training_output_epoch600.log");
 
     //int64_t batch_size = 8192;
     int64_t batch_size = 16384;
