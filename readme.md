@@ -1,6 +1,6 @@
 # NNUE Cpp Trainer
 
-**NNUE Cpp Trainer** is an NNUE network trainer implemented with PyTorch C++ frontend ([LibTorch](https://pytorch.org/cppdocs/frontend.html)). Similar to the [nnue-pytorch](https://github.com/official-stockfish/nnue-pytorch) in which a Stockfish NNUE trainer is implemented in Python with [Pytorch](https://pytorch.org/) library, this project is a C++ derivation of nnue-pytorch, aiming to provide a more C++ friendly implementation of trainer for any future research that is related to NNUE technique. The key difference of  this implementation from the original trainer by [Nodchip]() is that, this project is still heavily relying on Pytorch (LibTorch).
+**NNUE Cpp Trainer** is an NNUE network trainer implemented with PyTorch C++ frontend ([LibTorch](https://pytorch.org/cppdocs/frontend.html)). Similar to the [nnue-pytorch](https://github.com/official-stockfish/nnue-pytorch) in which a Stockfish NNUE trainer is implemented in Python with [Pytorch](https://pytorch.org/) library, this project is a C++ derivation of nnue-pytorch, aiming to provide a more C++ friendly implementation of trainer for any future research that is related to NNUE technique. The key difference of  this implementation from the original trainer by [Nodchip](https://github.com/nodchip) is that, this project is still heavily relying on Pytorch (LibTorch).
 
 Currently the project only supports the original network architecture (the 2020 version), which means that the trained network can only be used on Stockfish 13 or earlier versions of Stockfish engines.
 

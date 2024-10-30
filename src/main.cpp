@@ -3,10 +3,9 @@
 #include <iostream>
 
 #include "ranger.h"
+#include "train.h"
 
 void test_read_batch_stream();
-void train_nnue_model();
-void training_speed_benckmark();
 //void test_feature_transformer_backward();
 void test_model_forward_and_loss();
 void test_model_backward();
